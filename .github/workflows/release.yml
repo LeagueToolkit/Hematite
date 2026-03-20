@@ -14,14 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
 
       - name: Generate changelog
         id: changelog
         uses: orhun/git-cliff-action@v4
         with:
-          config: hematite-v2/cliff.toml
+          config: cliff.toml
           args: --latest --strip header
 
       - name: Setup Rust
@@ -29,25 +28,20 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: hematite-v2
 
       - name: Build Hematite CLI
-        working-directory: hematite-v2
         run: cargo build --release --bin hematite-cli
 
       - name: Prepare release artifacts
         shell: bash
         run: |
           mkdir -p release
-          cp hematite-v2/target/release/hematite-cli.exe release/
+          cp target/release/hematite-cli.exe release/
           cd release
           7z a -tzip hematite-cli-windows-x64.zip hematite-cli.exe
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: 'Hematite ${{ github.ref_name }}'
