@@ -1,0 +1,37 @@
+[package]
+name = "hematite-cli"
+description = "CLI binary for Hematite skin fixer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "hematite-cli"
+path = "src/main.rs"
+
+[dependencies]
+hematite-types = { workspace = true }
+hematite-core = { workspace = true }
+hematite-ltk = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# CLI framework
+clap = { version = "4.4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+colored = "2.0"
+
+# File processing
+zip = "0.6"
+tempfile = "3.10"
+walkdir = "2"
+
+# Parallelism
+rayon = "1.8"
+
+# Config fetching (remote + cache)
+reqwest = { version = "0.12", features = ["blocking", "json"] }

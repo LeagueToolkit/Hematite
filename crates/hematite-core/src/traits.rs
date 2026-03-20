@@ -1,0 +1,66 @@
+//! Trait abstractions for external dependencies.
+//!
+//! The fix engine operates exclusively against these traits. Implementations
+//! live in `hematite-ltk` (or any future adapter crate).
+//!
+//! ## Design rationale
+//! - `BinProvider`: Wraps BIN parsing/serialization. When LTK changes its BinTree API,
+//!   only the adapter implementation changes.
+//! - `HashProvider`: Wraps hash dictionary loading. Today: txt files. Tomorrow: lmdb.
+//!   Reverse lookups (name → hash) are required for the fix engine.
+//! - `WadProvider`: Wraps WAD path lookups. The fix engine only asks "does this path
+//!   exist?" — it never reads WAD chunk data directly.
+
+use anyhow::Result;
+use hematite_types::bin::BinTree;
+use hematite_types::hash::{TypeHash, FieldHash, PathHash, GameHash};
+
+/// Abstraction over BIN file parsing and serialization.
+///
+/// Implementors handle the actual format (LTK today, something else tomorrow).
+pub trait BinProvider: Send + Sync {
+    /// Parse BIN from raw bytes into Hematite's domain types.
+    fn parse_bytes(&self, data: &[u8]) -> Result<BinTree>;
+
+    /// Serialize a BinTree back to bytes for writing.
+    fn write_bytes(&self, tree: &BinTree) -> Result<Vec<u8>>;
+}
+
+/// Abstraction over hash dictionary loading.
+///
+/// Implementations can read from txt files, lmdb, embedded data, or network.
+/// All reverse lookups (name → hash) must be pre-computed at load time for O(1) access.
+pub trait HashProvider: Send + Sync {
+    /// Resolve a class hash to its type name (e.g. 0xABCD → "SkinCharacterDataProperties").
+    fn resolve_type(&self, hash: TypeHash) -> Option<&str>;
+
+    /// Resolve a field hash to its field name (e.g. 0x1234 → "UnitHealthBarStyle").
+    fn resolve_field(&self, hash: FieldHash) -> Option<&str>;
+
+    /// Resolve an entry path hash to its path string.
+    fn resolve_entry(&self, hash: PathHash) -> Option<&str>;
+
+    /// Resolve a game asset hash (xxhash64) to its path.
+    fn resolve_game_path(&self, hash: GameHash) -> Option<&str>;
+
+    /// Reverse lookup: type name → type hash.
+    fn type_hash(&self, name: &str) -> Option<TypeHash>;
+
+    /// Reverse lookup: field name → field hash.
+    fn field_hash(&self, name: &str) -> Option<FieldHash>;
+
+    /// Whether any hashes are loaded (false if dictionary is empty/missing).
+    fn is_loaded(&self) -> bool;
+}
+
+/// Abstraction over WAD file path lookups.
+///
+/// The fix engine uses this to check if assets exist in the mod's WAD file.
+/// This prevents false positives (e.g. don't convert .dds→.tex if the .dds exists).
+pub trait WadProvider: Send + Sync {
+    /// Check if a file path exists in the WAD (hashes the path internally).
+    fn has_path(&self, path: &str) -> bool;
+
+    /// Check if a raw xxhash64 exists in the WAD.
+    fn has_hash(&self, hash: u64) -> bool;
+}

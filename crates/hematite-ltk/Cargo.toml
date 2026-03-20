@@ -1,0 +1,18 @@
+[package]
+name = "hematite-ltk"
+description = "LTK adapter — the ONLY crate that imports league-toolkit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+hematite-types = { workspace = true }
+anyhow = { workspace = true }
+indexmap = { workspace = true }
+
+# League file parsing — THIS IS THE ONLY CRATE THAT DEPENDS ON LTK
+# When LTK breaks its API, only this crate needs updating.
+league-toolkit = { version = "0.2", features = ["wad", "meta"] }
+
+# Hashing (for WAD path hashing)
+xxhash-rust = { version = "0.8", features = ["xxh64"] }

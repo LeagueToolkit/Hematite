@@ -1,0 +1,157 @@
+{
+    "version": "1.0.0",
+    "last_updated": "2026-01-11",
+    "fixes": {
+        "healthbar_fix": {
+            "name": "Missing HP Bar",
+            "description": "Adds UnitHealthBarStyle field to fix invisible health bars",
+            "enabled": true,
+            "severity": "high",
+            "detect": {
+                "type": "missing_or_wrong_field",
+                "entry_type": "SkinCharacterDataProperties",
+                "embed_path": "HealthBarData",
+                "embed_type": "CharacterHealthBarDataRecord",
+                "field": "UnitHealthBarStyle",
+                "expected_value": 12
+            },
+            "apply": {
+                "type": "ensure_field",
+                "field": "UnitHealthBarStyle",
+                "value": 12,
+                "data_type": "u8",
+                "create_parent": {
+                    "field": "HealthBarData",
+                    "type": "CharacterHealthBarDataRecord"
+                }
+            }
+        },
+        "staticmat_texturepath": {
+            "name": "White Model (TextureName)",
+            "description": "Renames TextureName to TexturePath in material definitions",
+            "enabled": true,
+            "severity": "critical",
+            "detect": {
+                "type": "field_hash_exists",
+                "entry_type": "StaticMaterialDef",
+                "path": "SamplerValues.*.TextureName"
+            },
+            "apply": {
+                "type": "rename_hash",
+                "from_hash": "TextureName",
+                "to_hash": "TexturePath"
+            }
+        },
+        "staticmat_samplername": {
+            "name": "White Model (SamplerName)",
+            "description": "Renames SamplerName to TextureName in material definitions",
+            "enabled": true,
+            "severity": "critical",
+            "detect": {
+                "type": "field_hash_exists",
+                "entry_type": "StaticMaterialDef",
+                "path": "SamplerValues.*.SamplerName"
+            },
+            "apply": {
+                "type": "rename_hash",
+                "from_hash": "SamplerName",
+                "to_hash": "TextureName"
+            }
+        },
+        "black_icons": {
+            "name": "Black/Missing Icons",
+            "description": "Converts .dds icon references to .tex when file not in WAD",
+            "enabled": true,
+            "severity": "medium",
+            "detect": {
+                "type": "string_extension_not_in_wad",
+                "entry_type": "SkinCharacterDataProperties",
+                "fields": [
+                    "iconAvatar",
+                    "iconCircle",
+                    "iconSquare"
+                ],
+                "extension": ".dds"
+            },
+            "apply": {
+                "type": "replace_string_extension",
+                "from": ".dds",
+                "to": ".tex"
+            }
+        },
+        "dds_to_tex": {
+            "name": "Broken Particle Effects",
+            "description": "Converts all .dds texture references to .tex when file not in WAD",
+            "enabled": true,
+            "severity": "high",
+            "detect": {
+                "type": "recursive_string_extension_not_in_wad",
+                "extension": ".dds",
+                "path_prefixes": [
+                    "assets/characters/",
+                    "assets/shared/materials/",
+                    "assets/shared/particles/",
+                    "assets/particles/"
+                ]
+            },
+            "apply": {
+                "type": "replace_string_extension",
+                "from": ".dds",
+                "to": ".tex"
+            }
+        },
+        "champion_bin_remover": {
+            "name": "Champion Bin Files",
+            "description": "Removes champion data files that break mods after patches",
+            "enabled": true,
+            "severity": "high",
+            "detect": {
+                "type": "entry_type_exists_any",
+                "entry_types": [
+                    "SpellObject",
+                    "StatStoneData",
+                    "SkinCharacterMetaDataProperties",
+                    "CharacterRecord",
+                    "ChampionRuneRecommendationsContext",
+                    "RecSpellRankUpInfoList",
+                    "ItemRecommendationOverrideSet",
+                    "ItemRecommendationContextList",
+                    "StatStoneSet",
+                    "AbilityObject"
+                ]
+            },
+            "apply": {
+                "type": "remove_from_wad"
+            }
+        },
+        "bnk_remover": {
+            "name": "Broken Sound Files",
+            "description": "Removes BNK audio files with incompatible versions",
+            "enabled": true,
+            "severity": "low",
+            "detect": {
+                "type": "bnk_version_not_in",
+                "allowed_versions": [
+                    134,
+                    145
+                ]
+            },
+            "apply": {
+                "type": "remove_from_wad"
+            }
+        },
+        "vfx_shape_fix": {
+            "name": "VFX Shape Fix",
+            "description": "Fixes VFX particle shapes that broke after patch 14.1",
+            "enabled": true,
+            "severity": "medium",
+            "detect": {
+                "type": "vfx_shape_needs_fix",
+                "entry_type": "VfxSystemDefinitionData"
+            },
+            "apply": {
+                "type": "vfx_shape_fix"
+            }
+        }
+    }
+}

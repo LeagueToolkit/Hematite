@@ -1,0 +1,15 @@
+[package]
+name = "hematite-core"
+description = "Fix engine for Hematite — detection, transforms, shared utilities. No LTK imports."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+hematite-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+indexmap = { workspace = true }
+regex = "1.10"
+strsim = "0.11"

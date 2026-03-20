@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hematite-types",
+    "crates/hematite-core",
+    "crates/hematite-ltk",
+    "crates/hematite-cli",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+authors = ["RitoShark"]
+
+[workspace.dependencies]
+# Shared across crates
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+indexmap = { version = "2.7", features = ["serde"] }
+
+# Internal crates
+hematite-types = { path = "crates/hematite-types" }
+hematite-core = { path = "crates/hematite-core" }
+hematite-ltk = { path = "crates/hematite-ltk" }

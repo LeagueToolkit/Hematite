@@ -1,0 +1,21 @@
+# Build artifacts
+target/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*.wad.client
+*.fantome
+*.wad/
+
+# Logs
+logs/
