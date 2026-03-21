@@ -146,6 +146,7 @@ fn process_wad_file(
     dry_run: bool,
 ) -> Result<ProcessResult> {
     use hematite_ltk::wad_adapter::WadFile;
+    use hematite_core::detect::bnk::parse_bnk_version;
 
     tracing::info!("Processing WAD: {}", file.display());
 
@@ -163,7 +164,33 @@ fn process_wad_file(
     tracing::info!("WAD has {} total entries, {} BIN files", wad_provider.hash_count(), bin_chunks.len());
 
     let mut total_result = ProcessResult::default();
+    let mut shared_files_to_remove = Vec::new();
 
+    // Check if bnk_remover fix is selected
+    if selected_fixes.contains(&"bnk_remover".to_string()) {
+        tracing::debug!("BNK remover fix is enabled, checking for BNK files...");
+
+        let bnk_chunks = wad_file.extract_bnk_files(&hash_provider)
+            .context("Failed to extract BNK files from WAD")?;
+
+        if !bnk_chunks.is_empty() {
+            tracing::info!("Found {} BNK files in WAD", bnk_chunks.len());
+
+            for (path, bytes) in &bnk_chunks {
+                let info = parse_bnk_version(bytes);
+
+                if info.should_remove {
+                    tracing::info!("Marking BNK for removal: {} - {}", path, info.reason);
+                    shared_files_to_remove.push(path.clone());
+                    total_result.fixes_applied += 1;
+                } else {
+                    tracing::debug!("Keeping BNK: {} - {}", path, info.reason);
+                }
+            }
+        }
+    }
+
+    // Process BIN files
     for (path, bytes) in &bin_chunks {
         let tree = match bin_provider.parse_bytes(bytes) {
             Ok(t) => t,
@@ -184,6 +211,19 @@ fn process_wad_file(
 
         let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
         total_result.merge(result);
+
+        // Collect files marked for removal from this BIN context
+        shared_files_to_remove.extend(ctx.files_to_remove);
+    }
+
+    // Update total files removed count
+    total_result.files_removed = shared_files_to_remove.len() as u32;
+
+    if !shared_files_to_remove.is_empty() {
+        tracing::info!("Total files marked for removal: {}", shared_files_to_remove.len());
+        if !dry_run {
+            tracing::warn!("WAD writing not yet implemented - {} files would be removed but changes not persisted", shared_files_to_remove.len());
+        }
     }
 
     if !dry_run && total_result.fixes_applied > 0 {

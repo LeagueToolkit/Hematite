@@ -145,4 +145,43 @@ impl<R: Read + Seek> WadFile<R> {
 
         Ok(results)
     }
+
+    /// Extract all BNK files from the WAD.
+    ///
+    /// Uses the hash provider to resolve chunk path hashes to file paths,
+    /// then extracts chunks whose path ends with `.bnk`.
+    /// Returns a vec of (resolved_path, decompressed_bytes) pairs.
+    pub fn extract_bnk_files(&mut self, hashes: &dyn HashProvider) -> Result<Vec<(String, Vec<u8>)>> {
+        // Collect BNK chunk info first (path_hash + resolved path)
+        let bnk_chunks: Vec<(u64, String)> = self.wad.chunks().iter()
+            .filter_map(|chunk| {
+                let path = hashes.resolve_game_path(GameHash(chunk.path_hash))?;
+                if path.to_lowercase().ends_with(".bnk") {
+                    Some((chunk.path_hash, path.to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut results = Vec::with_capacity(bnk_chunks.len());
+
+        for (path_hash, path) in bnk_chunks {
+            let Some(chunk) = self.wad.chunks().get(path_hash) else {
+                continue;
+            };
+            let chunk = *chunk;
+
+            match self.wad.load_chunk_decompressed(&chunk) {
+                Ok(data) => {
+                    results.push((path, data.to_vec()));
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to extract BNK chunk {path}: {e:?}");
+                }
+            }
+        }
+
+        Ok(results)
+    }
 }
