@@ -13,11 +13,11 @@
 mod args;
 mod logging;
 mod process;
+mod remote;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use hematite_types::champion::{ChampionList, CharacterRelations};
-use hematite_types::config::FixConfig;
+use hematite_types::champion::CharacterRelations;
 use std::time::Instant;
 
 fn main() -> Result<()> {
@@ -38,9 +38,10 @@ fn main() -> Result<()> {
     // Collect selected fixes
     let selected_fixes = args::collect_selected_fixes(&cli);
 
-    // Load fix configuration and champion list
-    let config = load_config()?;
-    let champions = load_champions();
+    // Load fix configuration and champion list (tries remote, falls back to embedded)
+    let config = remote::load_fix_config();
+    let champion_list = remote::load_champion_list();
+    let champions = CharacterRelations::from_champion_list(&champion_list);
 
     // Log session start (unless in JSON mode)
     if !cli.json {
@@ -74,34 +75,6 @@ fn main() -> Result<()> {
         Ok(())
     } else {
         anyhow::bail!("Processing completed with {} error(s)", result.errors.len());
-    }
-}
-
-/// Load fix configuration.
-///
-/// For v2 MVP, we use an embedded config. Later versions will add:
-/// - Remote fetching from GitHub
-/// - Local cache with TTL
-/// - Fallback chain: remote → cache → embedded
-fn load_config() -> Result<FixConfig> {
-    const EMBEDDED_CONFIG: &str = include_str!("../../../config/fix_config.json");
-
-    serde_json::from_str(EMBEDDED_CONFIG)
-        .context("Failed to parse embedded fix configuration")
-}
-
-/// Load champion list and build character relations.
-///
-/// Falls back to empty relations if parsing fails (non-fatal).
-fn load_champions() -> CharacterRelations {
-    const EMBEDDED_CHAMPIONS: &str = include_str!("../../../config/champion_list.json");
-
-    match serde_json::from_str::<ChampionList>(EMBEDDED_CHAMPIONS) {
-        Ok(list) => CharacterRelations::from_champion_list(&list),
-        Err(e) => {
-            tracing::warn!("Failed to parse champion list, using empty defaults: {e}");
-            CharacterRelations::default()
-        }
     }
 }
 
