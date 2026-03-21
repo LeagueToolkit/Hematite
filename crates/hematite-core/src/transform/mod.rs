@@ -61,7 +61,10 @@ pub fn apply_transform(
             regex_ops::apply_rename(ctx, pattern, replacement)
         }
         TransformAction::VfxShapeFix => {
-            0
+            let Some(entry_type) = entry_type else {
+                return 0;
+            };
+            vfx_shape::apply(ctx, entry_type)
         }
     }
 }
