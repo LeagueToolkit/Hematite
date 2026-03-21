@@ -631,6 +631,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e05e7e6723e3455f4818c7b26e855439f7546cf617ef669d1adedb8669e5cb9"
 
 [[package]]
+name = "glam"
+version = "0.29.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
+
+[[package]]
 name = "h2"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -721,6 +727,8 @@ name = "hematite-ltk"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "glam 0.29.3",
+ "hematite-core",
  "hematite-types",
  "indexmap",
  "league-toolkit",
@@ -1136,7 +1144,7 @@ dependencies = [
  "bitflags",
  "bytemuck",
  "byteorder",
- "glam",
+ "glam 0.27.0",
  "ltk_hash",
  "ltk_io_ext",
  "num_enum",
@@ -1165,7 +1173,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "751c5641617ea4fe4bb1bf92ac82d88db597f35d5ff4ea40b735bcf674c15107"
 dependencies = [
  "byteorder",
- "glam",
+ "glam 0.27.0",
  "ltk_primitives",
  "thiserror",
 ]
@@ -1178,7 +1186,7 @@ checksum = "c8cb8f4cd64cf9b9fd0cf367d06e244de0c4135f7b964b8cb57a1272e5b79aa5"
 dependencies = [
  "bitflags",
  "byteorder",
- "glam",
+ "glam 0.27.0",
  "lazy_static",
  "ltk_io_ext",
  "ltk_primitives",
@@ -1194,7 +1202,7 @@ checksum = "20937d19448c43a3b6916499d3b5d33b9de0654d4923cdb6ec69bbc69180d580"
 dependencies = [
  "byteorder",
  "enum_dispatch",
- "glam",
+ "glam 0.27.0",
  "indexmap",
  "log",
  "ltk_io_ext",
@@ -1212,7 +1220,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5379b9ad4c75f5a12d43ae941ab9cb8b14b49f4e15c3a04cb213962b26b6fcb"
 dependencies = [
  "byteorder",
- "glam",
+ "glam 0.27.0",
  "thiserror",
 ]
 
