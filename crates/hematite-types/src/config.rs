@@ -19,13 +19,9 @@
 //! | `bnk_remover` | `BnkVersionNotIn` | `RemoveFromWad` |
 //! | `vfx_shape_fix` | `VfxShapeNeedsFix` | `VfxShapeFix` |
 //!
-//! ## TODO
-//! - [ ] Port FixConfig, FixRule, DetectionRule, TransformAction from old schema.rs
-//! - [ ] Port BinDataType enum
-//! - [ ] Port ParentEmbed struct (for EnsureField create_parent)
-//! - [ ] Port ContextualValues (champion/subchamp-specific overrides)
-//! - [ ] Add serde deserialization with internally-tagged enums
-//! - [ ] Add unit tests for JSON round-tripping
+//! ## Future
+//! - Port ContextualValues (champion/subchamp-specific overrides)
+//! - Add unit tests for JSON round-tripping
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};

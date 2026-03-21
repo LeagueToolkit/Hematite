@@ -6,7 +6,8 @@ use anyhow::{Context, Result};
 use hematite_core::context::FixContext;
 use hematite_core::pipeline::apply_fixes;
 use hematite_core::traits::BinProvider;
-use hematite_ltk::{bin_adapter::LtkBinProvider, hash_adapter::TxtHashProvider, wad_adapter::LtkWadProvider};
+use hematite_ltk::{bin_adapter::LtkBinProvider, hash_adapter::TxtHashProvider};
+use hematite_types::champion::CharacterRelations;
 use hematite_types::config::FixConfig;
 use hematite_types::result::ProcessResult;
 use std::path::Path;
@@ -17,6 +18,7 @@ pub fn process_input(
     input: &Path,
     config: &FixConfig,
     selected_fixes: &[String],
+    champions: &CharacterRelations,
     dry_run: bool,
 ) -> Result<ProcessResult> {
     let mut total_result = ProcessResult::default();
@@ -27,12 +29,12 @@ pub fn process_input(
             let path = entry.path();
 
             if path.is_file() && is_supported_file(path) {
-                let result = process_file(path, config, selected_fixes, dry_run)?;
+                let result = process_file(path, config, selected_fixes, champions, dry_run)?;
                 total_result.merge(result);
             }
         }
     } else {
-        total_result = process_file(input, config, selected_fixes, dry_run)?;
+        total_result = process_file(input, config, selected_fixes, champions, dry_run)?;
     }
 
     Ok(total_result)
@@ -58,6 +60,7 @@ fn process_file(
     file: &Path,
     config: &FixConfig,
     selected_fixes: &[String],
+    champions: &CharacterRelations,
     dry_run: bool,
 ) -> Result<ProcessResult> {
     let ext = file.extension()
@@ -71,11 +74,11 @@ fn process_file(
         .unwrap_or_default();
 
     if ext == "bin" {
-        process_bin_file(file, config, selected_fixes, dry_run)
+        process_bin_file(file, config, selected_fixes, champions, dry_run)
     } else if file_name.ends_with(".wad.client") {
-        process_wad_file(file, config, selected_fixes, dry_run)
+        process_wad_file(file, config, selected_fixes, champions, dry_run)
     } else if ext == "fantome" || ext == "zip" {
-        process_fantome_file(file, config, selected_fixes, dry_run)
+        process_fantome_file(file, config, selected_fixes, champions, dry_run)
     } else {
         anyhow::bail!("Unsupported file type: {}", file.display());
     }
@@ -86,6 +89,7 @@ fn process_bin_file(
     file: &Path,
     config: &FixConfig,
     selected_fixes: &[String],
+    champions: &CharacterRelations,
     dry_run: bool,
 ) -> Result<ProcessResult> {
     tracing::info!("Processing BIN: {}", file.display());
@@ -101,7 +105,7 @@ fn process_bin_file(
     let tree = bin_provider.parse_bytes(&bytes)
         .context("Failed to parse BIN file")?;
 
-    // Create dummy providers for standalone BIN (no WAD, no champions)
+    // Standalone BIN has no WAD context
     struct NullWadProvider;
     impl hematite_core::traits::WadProvider for NullWadProvider {
         fn has_path(&self, _path: &str) -> bool { false }
@@ -109,15 +113,12 @@ fn process_bin_file(
     }
     let null_wad = NullWadProvider;
 
-    // TODO: Load champion list from JSON
-    let champions = hematite_types::champion::CharacterRelations::default();
-
     // Create fix context
     let mut ctx = FixContext {
         tree,
         hashes: &hash_provider,
         wad: &null_wad,
-        champions: &champions,
+        champions,
         files_to_remove: Vec::new(),
         file_path: file.to_string_lossy().to_string(),
     };
@@ -127,54 +128,124 @@ fn process_bin_file(
 
     // Write back if changes were made and not dry-run
     if !dry_run && result.fixes_applied > 0 {
-        tracing::info!("Writing modified BIN file");
-
-        // TODO: Implement write_bytes once LTK supports it
-        // For now, just warn that writing is not yet supported
-        tracing::warn!("⚠ BIN writing not yet implemented (LTK limitation)");
-        tracing::info!("Dry-run mode would have written {} fixes", result.fixes_applied);
+        tracing::warn!("BIN writing not yet implemented (LTK limitation) - {} fixes detected but not persisted", result.fixes_applied);
     }
 
     Ok(result)
 }
 
 /// Process a .wad.client file.
+///
+/// Extracts BIN files from the WAD, runs the fix pipeline on each,
+/// and reports results. Writing modified BINs back is not yet supported.
 fn process_wad_file(
     file: &Path,
-    _config: &FixConfig,
-    _selected_fixes: &[String],
-    _dry_run: bool,
+    config: &FixConfig,
+    selected_fixes: &[String],
+    champions: &CharacterRelations,
+    dry_run: bool,
 ) -> Result<ProcessResult> {
+    use hematite_ltk::wad_adapter::WadFile;
+
     tracing::info!("Processing WAD: {}", file.display());
 
-    // Initialize providers
-    let _hash_provider = TxtHashProvider::load_from_appdata()
+    let hash_provider = TxtHashProvider::load_from_appdata()
         .context("Failed to load hash dictionaries")?;
-    let wad_provider = LtkWadProvider::from_file(file)
-        .context("Failed to load WAD file")?;
+    let bin_provider = LtkBinProvider;
 
-    // TODO: Extract BIN files from WAD, process each, rebuild WAD
-    // For v2 MVP, this is deferred until LTK write support is ready
+    let mut wad_file = WadFile::open(file)
+        .context("Failed to open WAD file")?;
 
-    tracing::warn!("⚠ WAD processing not yet implemented");
-    tracing::info!("Detected WAD with {} entries", wad_provider.hash_count());
+    let wad_provider = wad_file.build_provider();
+    let bin_chunks = wad_file.extract_bin_files(&hash_provider)
+        .context("Failed to extract BIN files from WAD")?;
 
-    Ok(ProcessResult::default())
+    tracing::info!("WAD has {} total entries, {} BIN files", wad_provider.hash_count(), bin_chunks.len());
+
+    let mut total_result = ProcessResult::default();
+
+    for (path, bytes) in &bin_chunks {
+        let tree = match bin_provider.parse_bytes(bytes) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!("Failed to parse BIN {path}: {e}");
+                continue;
+            }
+        };
+
+        let mut ctx = FixContext {
+            tree,
+            hashes: &hash_provider,
+            wad: &wad_provider,
+            champions,
+            files_to_remove: Vec::new(),
+            file_path: path.clone(),
+        };
+
+        let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+        total_result.merge(result);
+    }
+
+    if !dry_run && total_result.fixes_applied > 0 {
+        tracing::warn!(
+            "BIN writing not yet implemented (LTK limitation) - {} fixes detected in WAD but not persisted",
+            total_result.fixes_applied
+        );
+    }
+
+    Ok(total_result)
 }
 
 /// Process a .fantome or .zip file.
+///
+/// Extracts WAD files from the ZIP archive and processes each one.
 fn process_fantome_file(
     file: &Path,
-    _config: &FixConfig,
-    _selected_fixes: &[String],
-    _dry_run: bool,
+    config: &FixConfig,
+    selected_fixes: &[String],
+    champions: &CharacterRelations,
+    dry_run: bool,
 ) -> Result<ProcessResult> {
     tracing::info!("Processing Fantome: {}", file.display());
 
-    // TODO: Extract ZIP, find .wad.client files, process, repack
-    // For v2 MVP, this is deferred
+    let zip_file = std::fs::File::open(file)
+        .context("Failed to open fantome/zip file")?;
+    let mut archive = zip::ZipArchive::new(std::io::BufReader::new(zip_file))
+        .context("Failed to read ZIP archive")?;
 
-    tracing::warn!("⚠ Fantome processing not yet implemented");
+    // Extract .wad.client files to temp dir
+    let temp_dir = tempfile::tempdir()
+        .context("Failed to create temp directory")?;
 
-    Ok(ProcessResult::default())
+    let mut wad_paths = Vec::new();
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)
+            .context("Failed to read ZIP entry")?;
+
+        let name = entry.name().to_lowercase();
+        if name.ends_with(".wad.client") {
+            let dest = temp_dir.path().join(entry.name());
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut out = std::fs::File::create(&dest)?;
+            std::io::copy(&mut entry, &mut out)?;
+            wad_paths.push(dest);
+        }
+    }
+
+    if wad_paths.is_empty() {
+        tracing::warn!("No .wad.client files found in {}", file.display());
+        return Ok(ProcessResult::default());
+    }
+
+    tracing::info!("Found {} WAD file(s) in archive", wad_paths.len());
+
+    let mut total_result = ProcessResult::default();
+    for wad_path in &wad_paths {
+        let result = process_wad_file(wad_path, config, selected_fixes, champions, dry_run)?;
+        total_result.merge(result);
+    }
+
+    Ok(total_result)
 }

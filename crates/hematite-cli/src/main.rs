@@ -16,6 +16,7 @@ mod process;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use hematite_types::champion::{ChampionList, CharacterRelations};
 use hematite_types::config::FixConfig;
 use std::time::Instant;
 
@@ -37,8 +38,9 @@ fn main() -> Result<()> {
     // Collect selected fixes
     let selected_fixes = args::collect_selected_fixes(&cli);
 
-    // Load fix configuration
+    // Load fix configuration and champion list
     let config = load_config()?;
+    let champions = load_champions();
 
     // Log session start (unless in JSON mode)
     if !cli.json {
@@ -53,6 +55,7 @@ fn main() -> Result<()> {
         &cli.input,
         &config,
         &selected_fixes,
+        &champions,
         cli.dry_run,
     )?;
 
@@ -81,12 +84,25 @@ fn main() -> Result<()> {
 /// - Local cache with TTL
 /// - Fallback chain: remote → cache → embedded
 fn load_config() -> Result<FixConfig> {
-    // Load embedded config from the old repo for now
-    // TODO: Add remote fetching and caching
-    const EMBEDDED_CONFIG: &str = include_str!("../../../../hematite/config/fix_config.json");
+    const EMBEDDED_CONFIG: &str = include_str!("../../../config/fix_config.json");
 
     serde_json::from_str(EMBEDDED_CONFIG)
         .context("Failed to parse embedded fix configuration")
+}
+
+/// Load champion list and build character relations.
+///
+/// Falls back to empty relations if parsing fails (non-fatal).
+fn load_champions() -> CharacterRelations {
+    const EMBEDDED_CHAMPIONS: &str = include_str!("../../../config/champion_list.json");
+
+    match serde_json::from_str::<ChampionList>(EMBEDDED_CHAMPIONS) {
+        Ok(list) => CharacterRelations::from_champion_list(&list),
+        Err(e) => {
+            tracing::warn!("Failed to parse champion list, using empty defaults: {e}");
+            CharacterRelations::default()
+        }
+    }
 }
 
 /// Output results as JSON for automation.

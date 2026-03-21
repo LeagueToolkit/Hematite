@@ -11,10 +11,9 @@
 //! - [`BinProperty`] — A named property (field_hash + value)
 //! - [`PropertyValue`] — The value of a property (enum over all League types)
 //!
-//! ## TODO
-//! - [ ] Define all `PropertyValue` variants matching LTK's `PropertyValueEnum`
-//! - [ ] Implement Display for debugging
-//! - [ ] Add helper methods on BinTree (find_objects_by_type, etc.)
+//! ## Future
+//! - Implement Display for debugging
+//! - Add helper methods on BinTree (find_objects_by_type, etc.)
 
 use indexmap::IndexMap;
 use crate::hash::{TypeHash, FieldHash, PathHash};
@@ -50,10 +49,8 @@ pub struct BinProperty {
 /// This enum must be kept in sync with LTK's `PropertyValueEnum`.
 /// The conversion happens in `hematite-ltk/src/convert.rs`.
 ///
-/// ## TODO
-/// - [ ] Populate all variants from LTK's PropertyValueEnum
-/// - [ ] Container/Optional/Embedded need inner type tracking
-/// - [ ] Consider whether Map variant is needed
+/// All variants match LTK's PropertyValueEnum. The conversion between
+/// LTK and Hematite types happens in `hematite-ltk/src/convert.rs`.
 #[derive(Debug, Clone)]
 pub enum PropertyValue {
     // Primitives

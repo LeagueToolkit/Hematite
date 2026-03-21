@@ -79,24 +79,23 @@ pub enum Verbosity {
     Trace,
 }
 
+/// All known fix IDs in application order.
+const ALL_FIX_IDS: &[&str] = &[
+    "healthbar_fix",
+    "staticmat_texturepath",
+    "staticmat_samplername",
+    "black_icons",
+    "dds_to_tex",
+    "champion_bin_remover",
+    "bnk_remover",
+    "vfx_shape_fix",
+];
+
 /// Collect selected fix IDs based on CLI flags.
 ///
-/// If `--all` is set, returns all fix IDs.
-/// If no flags set, returns empty vec (auto-detect mode).
+/// If `--all` is set or no flags are passed, returns all fix IDs.
+/// Otherwise, returns only the specifically selected fixes.
 pub fn collect_selected_fixes(cli: &Cli) -> Vec<String> {
-    if cli.all {
-        return vec![
-            "healthbar_fix".into(),
-            "staticmat_texturepath".into(),
-            "staticmat_samplername".into(),
-            "black_icons".into(),
-            "dds_to_tex".into(),
-            "champion_bin_remover".into(),
-            "bnk_remover".into(),
-            "vfx_shape_fix".into(),
-        ];
-    }
-
     let mut fixes = Vec::new();
     if cli.healthbar { fixes.push("healthbar_fix".into()); }
     if cli.white_model {
@@ -108,5 +107,11 @@ pub fn collect_selected_fixes(cli: &Cli) -> Vec<String> {
     if cli.remove_champion_bins { fixes.push("champion_bin_remover".into()); }
     if cli.remove_bnk { fixes.push("bnk_remover".into()); }
     if cli.vfx_shape { fixes.push("vfx_shape_fix".into()); }
+
+    // If --all or no specific flags: apply all fixes
+    if cli.all || fixes.is_empty() {
+        return ALL_FIX_IDS.iter().map(|s| (*s).into()).collect();
+    }
+
     fixes
 }

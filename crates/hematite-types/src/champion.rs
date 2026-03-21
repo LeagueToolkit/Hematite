@@ -6,10 +6,8 @@
 //! - Healthbar values for non-champion entities (turrets, monsters, etc.)
 //! - Reverse lookups: subchamp → primary champion
 //!
-//! ## TODO
-//! - [ ] Implement CharacterRelations with case-insensitive lookups
-//! - [ ] Add reverse map building (subchamp → champion)
-//! - [ ] Port extract_champion_from_path() from old character_relations.rs
+//! ## Future
+//! - Port extract_champion_from_path() from old character_relations.rs
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
@@ -39,9 +37,6 @@ pub struct CharacterRelations {
 
 impl CharacterRelations {
     /// Build from a raw champion list, pre-computing reverse maps.
-    ///
-    /// ## TODO
-    /// - [ ] Implement this
     pub fn from_champion_list(list: &ChampionList) -> Self {
         let mut relations = Self::default();
 
