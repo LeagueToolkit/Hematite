@@ -8,7 +8,38 @@
 //! - `staticmat_samplername`: SamplerName → TextureName
 //!
 //! ## Old code: ~90 LOC recursive walk. New code: ~20 LOC visitor impl.
-//!
-//! ## TODO
-//! - [ ] Implement RenameHashVisitor
-//! - [ ] Implement apply() using walk::walk_tree()
+
+use hematite_types::hash::FieldHash;
+use crate::context::FixContext;
+use crate::walk::{PropertyVisitor, walk_tree};
+
+struct RenameHashVisitor {
+    from: u32,
+    to: u32,
+}
+
+impl PropertyVisitor for RenameHashVisitor {
+    fn visit_field_hash(&mut self, hash: FieldHash) -> Option<FieldHash> {
+        if hash.0 == self.from {
+            Some(FieldHash(self.to))
+        } else {
+            None
+        }
+    }
+}
+
+pub fn apply(ctx: &mut FixContext, from_name: &str, to_name: &str) -> u32 {
+    let Some(from_hash) = ctx.hashes.field_hash(from_name) else {
+        return 0;
+    };
+    let Some(to_hash) = ctx.hashes.field_hash(to_name) else {
+        return 0;
+    };
+
+    let mut visitor = RenameHashVisitor {
+        from: from_hash.0,
+        to: to_hash.0,
+    };
+
+    walk_tree(&mut ctx.tree, &mut visitor)
+}
