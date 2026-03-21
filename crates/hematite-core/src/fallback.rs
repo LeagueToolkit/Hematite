@@ -13,11 +13,6 @@
 //!
 //! ## No LTK dependency
 //! This module is pure string matching — it has no league-toolkit coupling.
-//!
-//! ## TODO
-//! - [ ] Port from old fallback.rs
-//! - [ ] Add batch find_fallbacks() for multiple missing paths
-//! - [ ] Consider making threshold configurable per-fix
 
 use std::collections::HashMap;
 
@@ -43,9 +38,6 @@ impl AssetFallback {
     /// Find the best fallback for a missing asset path.
     ///
     /// Returns `None` if no sufficiently similar asset exists.
-    ///
-    /// ## TODO
-    /// - [ ] Implement Jaro-Winkler matching with file-type filtering
     pub fn find_fallback(&mut self, missing_path: &str) -> Option<&str> {
         if self.cache.contains_key(missing_path) {
             return self.cache[missing_path].as_deref();

@@ -14,9 +14,6 @@
 //!     // ...
 //! }
 //! ```
-//!
-//! ## TODO
-//! - [ ] Consider adding filter by multiple types (for EntryTypeExistsAny)
 
 use hematite_types::bin::{BinTree, BinObject};
 use hematite_types::hash::TypeHash;

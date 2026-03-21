@@ -3,10 +3,6 @@
 //! `FixContext` bundles together everything a detection rule or transform action
 //! needs: the BIN tree being processed, hash lookups, WAD existence checks,
 //! and champion relationship data.
-//!
-//! ## TODO
-//! - [ ] Add helper methods (get_field_hash, get_type_hash, get_current_champion)
-//! - [ ] Add files_to_remove tracking for RemoveFromWad transforms
 
 use hematite_types::bin::BinTree;
 use hematite_types::champion::CharacterRelations;
