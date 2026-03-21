@@ -9,54 +9,515 @@
 //! | `StringExtensionNotInWad` | String fields with extension not in WAD |
 //! | `RecursiveStringExtensionNotInWad` | Recursive scan for extension strings not in WAD |
 //! | `EntryTypeExistsAny` | Any object matches entry type list |
-//! | `BnkVersionNotIn` | BNK audio version not in allowed list |
+//! | `BnkVersionNotIn` | BNK audio version not in allowed list (file-level) |
 //! | `VfxShapeNeedsFix` | VFX shape has old format (pre-14.1) |
-//!
-//! ## Shared utilities used
-//! - [`crate::filter`] — `objects_by_type`, `has_any_type`
-//! - [`crate::walk`] — `extract_strings` for recursive string scanning
-//! - [`crate::factory`] — `matches_json` for value comparison
-//!
-//! ## TODO
-//! - [ ] Implement detect_issue() dispatch
-//! - [ ] Implement each detection rule function
-//! - [ ] Port search_field_path() logic using PropertyWalker
-//! - [ ] Handle BnkVersionNotIn (operates on raw bytes, not BIN tree)
 
-use hematite_types::bin::BinTree;
+use hematite_types::bin::{BinTree, PropertyValue, StructValue};
 use hematite_types::config::DetectionRule;
+use hematite_types::hash::FieldHash;
 use crate::traits::{HashProvider, WadProvider};
+use crate::walk::extract_strings;
+use crate::factory::matches_json;
+use crate::filter;
 
 /// Main detection dispatch. Returns true if the issue is detected.
-///
-/// ## TODO
-/// - [ ] Implement match on all DetectionRule variants
 pub fn detect_issue(
-    _rule: &DetectionRule,
-    _tree: &BinTree,
-    _hashes: &dyn HashProvider,
-    _wad: &dyn WadProvider,
+    rule: &DetectionRule,
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    wad: &dyn WadProvider,
 ) -> bool {
-    // TODO: Match on rule variant, delegate to specific detection function
-    //
-    // match rule {
-    //     DetectionRule::MissingOrWrongField { .. } => detect_missing_or_wrong_field(..),
-    //     DetectionRule::FieldHashExists { .. } => detect_field_hash_exists(..),
-    //     DetectionRule::StringExtensionNotInWad { .. } => detect_string_ext_not_in_wad(..),
-    //     DetectionRule::RecursiveStringExtensionNotInWad { .. } => detect_recursive_ext(..),
-    //     DetectionRule::EntryTypeExistsAny { .. } => detect_entry_type_exists(..),
-    //     DetectionRule::BnkVersionNotIn { .. } => detect_bnk_version(..),
-    //     DetectionRule::VfxShapeNeedsFix { .. } => detect_vfx_shape(..),
-    // }
+    match rule {
+        DetectionRule::MissingOrWrongField {
+            entry_type,
+            embed_path,
+            embed_type,
+            field,
+            expected_value,
+        } => detect_missing_or_wrong_field(
+            tree,
+            hashes,
+            entry_type,
+            embed_path.as_deref(),
+            embed_type.as_deref(),
+            field,
+            expected_value.as_ref(),
+        ),
+
+        DetectionRule::FieldHashExists { entry_type, path } => {
+            detect_field_hash_exists(tree, hashes, entry_type, path)
+        }
+
+        DetectionRule::StringExtensionNotInWad {
+            entry_type,
+            fields,
+            extension,
+        } => detect_string_extension_not_in_wad(tree, hashes, wad, entry_type, fields, extension),
+
+        DetectionRule::RecursiveStringExtensionNotInWad {
+            extension,
+            path_prefixes,
+        } => detect_recursive_extension(tree, wad, extension, path_prefixes),
+
+        DetectionRule::EntryTypeExistsAny { entry_types } => {
+            detect_entry_type_exists(tree, hashes, entry_types)
+        }
+
+        DetectionRule::BnkVersionNotIn { .. } => {
+            false
+        }
+
+        DetectionRule::VfxShapeNeedsFix { entry_type } => {
+            detect_vfx_shape_needs_fix(tree, hashes, entry_type)
+        }
+    }
+}
+
+fn detect_missing_or_wrong_field(
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    entry_type: &str,
+    embed_path: Option<&str>,
+    embed_type: Option<&str>,
+    field: &str,
+    expected_value: Option<&serde_json::Value>,
+) -> bool {
+    if !hashes.is_loaded() {
+        return false;
+    }
+
+    let Some(target_type_hash) = hashes.type_hash(entry_type) else {
+        return false;
+    };
+
+    let objects = filter::objects_by_type(tree, target_type_hash);
+
+    for obj in objects {
+        if let Some(expected_embed_type) = embed_type {
+            let Some(embed_type_hash) = hashes.type_hash(expected_embed_type) else {
+                continue;
+            };
+
+            let mut found_embed = false;
+            let mut missing_field = false;
+
+            for prop in obj.properties.values() {
+                if let PropertyValue::Embedded(struct_val) = &prop.value {
+                    if struct_val.class_hash == embed_type_hash {
+                        found_embed = true;
+
+                        let field_hash = hashes.field_hash(field);
+                        if let Some(fh) = field_hash {
+                            if let Some(existing_prop) = struct_val.properties.get(&fh.0) {
+                                if let Some(expected) = expected_value {
+                                    if !matches_json(&existing_prop.value, expected) {
+                                        missing_field = true;
+                                    }
+                                }
+                            } else {
+                                missing_field = true;
+                            }
+                        } else {
+                            missing_field = true;
+                        }
+                    }
+                }
+            }
+
+            if missing_field || !found_embed {
+                return true;
+            }
+        } else if let Some(embed_field_name) = embed_path {
+            let Some(embed_hash) = hashes.field_hash(embed_field_name) else {
+                continue;
+            };
+
+            if let Some(embed_prop) = obj.properties.get(&embed_hash.0) {
+                if let PropertyValue::Embedded(struct_val) = &embed_prop.value {
+                    let field_hash = hashes.field_hash(field);
+                    if let Some(fh) = field_hash {
+                        if !struct_val.properties.contains_key(&fh.0) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } else {
+            let field_hash = hashes.field_hash(field);
+            if let Some(fh) = field_hash {
+                if !obj.properties.contains_key(&fh.0) {
+                    return true;
+                }
+            }
+        }
+    }
+
     false
 }
 
-// TODO: Individual detection functions below
-//
-// fn detect_missing_or_wrong_field(..) -> bool { }
-// fn detect_field_hash_exists(..) -> bool { }
-// fn detect_string_ext_not_in_wad(..) -> bool { }
-// fn detect_recursive_ext(..) -> bool { }
-// fn detect_entry_type_exists(..) -> bool { }
-// fn detect_bnk_version(..) -> bool { }
-// fn detect_vfx_shape(..) -> bool { }
+fn detect_field_hash_exists(
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    entry_type: &str,
+    path: &str,
+) -> bool {
+    if !hashes.is_loaded() {
+        return false;
+    }
+
+    let Some(target_type_hash) = hashes.type_hash(entry_type) else {
+        return false;
+    };
+
+    let path_parts: Vec<&str> = path.split('.').collect();
+    if path_parts.is_empty() {
+        return false;
+    }
+
+    let objects = filter::objects_by_type(tree, target_type_hash);
+
+    for obj in objects {
+        if search_field_path(&obj.properties, &path_parts, hashes) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn search_field_path(
+    properties: &indexmap::IndexMap<u32, hematite_types::bin::BinProperty>,
+    path_parts: &[&str],
+    hashes: &dyn HashProvider,
+) -> bool {
+    if path_parts.is_empty() {
+        return false;
+    }
+
+    let current_part = path_parts[0];
+    let remaining = &path_parts[1..];
+
+    if remaining.is_empty() {
+        return properties.keys().any(|hash| {
+            hashes
+                .resolve_field(FieldHash(*hash))
+                .map(|name| name.eq_ignore_ascii_case(current_part))
+                .unwrap_or(false)
+        });
+    }
+
+    for (hash, prop) in properties {
+        let Some(field_name) = hashes.resolve_field(FieldHash(*hash)) else {
+            continue;
+        };
+
+        if !field_name.eq_ignore_ascii_case(current_part) {
+            continue;
+        }
+
+        if search_field_in_value(&prop.value, remaining, hashes) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn search_field_in_value(
+    value: &PropertyValue,
+    path_parts: &[&str],
+    hashes: &dyn HashProvider,
+) -> bool {
+    if path_parts.is_empty() {
+        return true;
+    }
+
+    match value {
+        PropertyValue::Struct(s) | PropertyValue::Embedded(s) => {
+            search_field_path(&s.properties, path_parts, hashes)
+        }
+        PropertyValue::Container(items) | PropertyValue::UnorderedContainer(items) => {
+            if path_parts[0] == "*" {
+                let remaining = &path_parts[1..];
+                items
+                    .iter()
+                    .any(|item| search_field_in_value(item, remaining, hashes))
+            } else {
+                false
+            }
+        }
+        PropertyValue::Optional(boxed) => {
+            if let Some(inner) = &**boxed {
+                search_field_in_value(inner, path_parts, hashes)
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+fn detect_string_extension_not_in_wad(
+    tree: &BinTree,
+    _hashes: &dyn HashProvider,
+    wad: &dyn WadProvider,
+    _entry_type: &str,
+    _fields: &[String],
+    extension: &str,
+) -> bool {
+    let strings = extract_strings(tree);
+
+    for s in strings {
+        if s.to_lowercase().ends_with(extension) && !wad.has_path(&s) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn detect_recursive_extension(
+    tree: &BinTree,
+    wad: &dyn WadProvider,
+    extension: &str,
+    path_prefixes: &[String],
+) -> bool {
+    let strings = extract_strings(tree);
+
+    for s in strings {
+        let lower = s.to_lowercase();
+
+        if !lower.ends_with(extension) {
+            continue;
+        }
+
+        if !path_prefixes.is_empty() {
+            let matches_prefix = path_prefixes
+                .iter()
+                .any(|prefix| lower.starts_with(&prefix.to_lowercase()));
+            if !matches_prefix {
+                continue;
+            }
+        }
+
+        if !wad.has_path(&s) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn detect_entry_type_exists(
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    entry_types: &[String],
+) -> bool {
+    if !hashes.is_loaded() {
+        return false;
+    }
+
+    for obj in tree.objects.values() {
+        if let Some(type_name) = hashes.resolve_type(obj.class_hash) {
+            if entry_types
+                .iter()
+                .any(|et| et.eq_ignore_ascii_case(type_name))
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn detect_vfx_shape_needs_fix(
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    entry_type: &str,
+) -> bool {
+    if !hashes.is_loaded() {
+        return false;
+    }
+
+    let Some(target_type_hash) = hashes.type_hash(entry_type) else {
+        return false;
+    };
+    let Some(shape_hash) = hashes.field_hash("Shape") else {
+        return false;
+    };
+    let Some(birth_translation_hash) = hashes.field_hash("BirthTranslation") else {
+        return false;
+    };
+
+    let objects = filter::objects_by_type(tree, target_type_hash);
+
+    for obj in objects {
+        for prop in obj.properties.values() {
+            if let PropertyValue::Container(items) | PropertyValue::UnorderedContainer(items) =
+                &prop.value
+            {
+                for item in items {
+                    if let PropertyValue::Embedded(emitter) = item {
+                        if let Some(shape_prop) = emitter.properties.get(&shape_hash.0) {
+                            if let PropertyValue::Embedded(shape) = &shape_prop.value {
+                                if has_old_vfx_shape_format(shape, birth_translation_hash) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn has_old_vfx_shape_format(shape: &StructValue, birth_translation_hash: FieldHash) -> bool {
+    shape.properties.contains_key(&birth_translation_hash.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hematite_types::bin::{BinObject, BinProperty};
+    use hematite_types::hash::{TypeHash, PathHash};
+    use indexmap::IndexMap;
+    use std::collections::HashMap;
+
+    struct MockHashProvider {
+        types: HashMap<String, u32>,
+        fields: HashMap<String, u32>,
+        type_names: HashMap<u32, String>,
+        field_names: HashMap<u32, String>,
+    }
+
+    impl MockHashProvider {
+        fn new() -> Self {
+            let mut provider = Self {
+                types: HashMap::new(),
+                fields: HashMap::new(),
+                type_names: HashMap::new(),
+                field_names: HashMap::new(),
+            };
+
+            provider.add_type("SkinCharacterDataProperties", 0x1234);
+            provider.add_field("UnitHealthBarStyle", 0x5678);
+            provider.add_field("Shape", 0xABCD);
+            provider.add_field("BirthTranslation", 0xEF00);
+
+            provider
+        }
+
+        fn add_type(&mut self, name: &str, hash: u32) {
+            self.types.insert(name.to_lowercase(), hash);
+            self.type_names.insert(hash, name.to_string());
+        }
+
+        fn add_field(&mut self, name: &str, hash: u32) {
+            self.fields.insert(name.to_lowercase(), hash);
+            self.field_names.insert(hash, name.to_string());
+        }
+    }
+
+    impl HashProvider for MockHashProvider {
+        fn resolve_type(&self, hash: TypeHash) -> Option<&str> {
+            self.type_names.get(&hash.0).map(|s| s.as_str())
+        }
+
+        fn resolve_field(&self, hash: FieldHash) -> Option<&str> {
+            self.field_names.get(&hash.0).map(|s| s.as_str())
+        }
+
+        fn resolve_entry(&self, _hash: PathHash) -> Option<&str> {
+            None
+        }
+
+        fn resolve_game_path(&self, _hash: hematite_types::hash::GameHash) -> Option<&str> {
+            None
+        }
+
+        fn type_hash(&self, name: &str) -> Option<TypeHash> {
+            self.types.get(&name.to_lowercase()).map(|&h| TypeHash(h))
+        }
+
+        fn field_hash(&self, name: &str) -> Option<FieldHash> {
+            self.fields.get(&name.to_lowercase()).map(|&h| FieldHash(h))
+        }
+
+        fn is_loaded(&self) -> bool {
+            !self.types.is_empty()
+        }
+    }
+
+    struct MockWadProvider {
+        paths: Vec<String>,
+    }
+
+    impl WadProvider for MockWadProvider {
+        fn has_path(&self, path: &str) -> bool {
+            self.paths.contains(&path.to_string())
+        }
+
+        fn has_hash(&self, _hash: u64) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn test_detect_entry_type_exists() {
+        let hashes = MockHashProvider::new();
+        let mut tree = BinTree::default();
+
+        let obj = BinObject {
+            class_hash: TypeHash(0x1234),
+            path_hash: PathHash(0),
+            properties: IndexMap::new(),
+        };
+        tree.objects.insert(0, obj);
+
+        let rule = DetectionRule::EntryTypeExistsAny {
+            entry_types: vec!["SkinCharacterDataProperties".to_string()],
+        };
+
+        let wad = MockWadProvider { paths: vec![] };
+        assert!(detect_issue(&rule, &tree, &hashes, &wad));
+    }
+
+    #[test]
+    fn test_detect_recursive_extension() {
+        let hashes = MockHashProvider::new();
+        let mut tree = BinTree::default();
+
+        let mut obj = BinObject {
+            class_hash: TypeHash(0x1234),
+            path_hash: PathHash(0),
+            properties: IndexMap::new(),
+        };
+
+        obj.properties.insert(
+            1,
+            BinProperty {
+                name_hash: FieldHash(1),
+                value: PropertyValue::String("test.dds".to_string()),
+            },
+        );
+
+        tree.objects.insert(0, obj);
+
+        let rule = DetectionRule::RecursiveStringExtensionNotInWad {
+            extension: ".dds".to_string(),
+            path_prefixes: vec![],
+        };
+
+        let wad = MockWadProvider { paths: vec![] };
+        assert!(detect_issue(&rule, &tree, &hashes, &wad));
+
+        let wad_with_file = MockWadProvider {
+            paths: vec!["test.dds".to_string()],
+        };
+        assert!(!detect_issue(&rule, &tree, &hashes, &wad_with_file));
+    }
+}
