@@ -9,7 +9,6 @@ use hematite_types::hash::{TypeHash, FieldHash, PathHash};
 use league_toolkit::meta::{
     Bin as LtkBin,
     BinObject as LtkBinObject,
-    BinProperty as LtkBinProperty,
     PropertyValueEnum as LtkValue,
 };
 use league_toolkit::meta::property::values::*;
@@ -27,15 +26,11 @@ pub fn ltk_tree_to_hematite(ltk_tree: LtkBin) -> Result<BinTree> {
 }
 
 /// Convert Hematite BinTree to LTK Bin (before writing).
-pub fn hematite_tree_to_ltk(tree: &BinTree) -> Result<LtkBin> {
-    let mut objects = IndexMap::new();
-
-    for (path_hash, obj) in &tree.objects {
-        let ltk_obj = hematite_object_to_ltk(obj)?;
-        objects.insert(*path_hash, ltk_obj);
-    }
-
-    Ok(LtkBin { objects })
+///
+/// **NOT IMPLEMENTED**: LTK 0.2/0.4 types have private `meta` fields preventing
+/// direct construction. Writing is blocked until LTK provides builder APIs.
+pub fn hematite_tree_to_ltk(_tree: &BinTree) -> Result<LtkBin> {
+    bail!("BIN writing not yet implemented (LTK has private fields)")
 }
 
 /// Convert single LTK BinObject to Hematite BinObject.
@@ -58,21 +53,11 @@ fn ltk_object_to_hematite(ltk_obj: LtkBinObject) -> Result<BinObject> {
 }
 
 /// Convert single Hematite BinObject to LTK BinObject.
-fn hematite_object_to_ltk(obj: &BinObject) -> Result<LtkBinObject> {
-    let mut properties = IndexMap::new();
-
-    for (name_hash, prop) in &obj.properties {
-        let ltk_prop = LtkBinProperty {
-            value: hematite_value_to_ltk(&prop.value)?,
-        };
-        properties.insert(*name_hash, ltk_prop);
-    }
-
-    Ok(LtkBinObject {
-        class_hash: obj.class_hash.0,
-        path_hash: obj.path_hash.0,
-        properties,
-    })
+///
+/// **NOT IMPLEMENTED**: LTK types have private fields.
+#[allow(dead_code)]
+fn hematite_object_to_ltk(_obj: &BinObject) -> Result<LtkBinObject> {
+    bail!("BIN object writing not yet implemented")
 }
 
 /// Convert LTK PropertyValueEnum to Hematite PropertyValue.
@@ -101,6 +86,11 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
         // Strings & hashes
         LtkValue::String(v) => PropertyValue::String(v.value.clone()),
         LtkValue::Hash(v) => PropertyValue::Hash(v.value),
+        LtkValue::WadChunkLink(v) => PropertyValue::Link(v.value.try_into().expect("WadChunkLink u64 overflow")),
+        LtkValue::ObjectLink(v) => PropertyValue::Link(v.value),
+        LtkValue::Color(v) => PropertyValue::Color([v.value.r, v.value.g, v.value.b, v.value.a]),
+        LtkValue::BitBool(v) => PropertyValue::BitBool(if v.value { 1 } else { 0 }),
+        LtkValue::None(_) => bail!("None value encountered in BIN"),
 
         // Nested structures
         LtkValue::Struct(s) => {
@@ -128,7 +118,7 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
         // Map
         LtkValue::Map(m) => {
             let mut pairs = Vec::new();
-            for (k, v) in &m.value {
+            for (k, v) in m.entries() {
                 pairs.push((ltk_value_to_hematite(k)?, ltk_value_to_hematite(v)?));
             }
             PropertyValue::Map(pairs)
@@ -139,7 +129,16 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
 }
 
 /// Convert Hematite PropertyValue to LTK PropertyValueEnum.
-pub fn hematite_value_to_ltk(val: &PropertyValue) -> Result<LtkValue> {
+///
+/// **NOT IMPLEMENTED**: LTK types have private fields.
+#[allow(dead_code)]
+pub fn hematite_value_to_ltk(_val: &PropertyValue) -> Result<LtkValue> {
+    bail!("BIN value writing not yet implemented")
+}
+
+#[cfg(any())] // Disable compilation - old broken code
+#[allow(dead_code)]
+fn _hematite_value_to_ltk_old(val: &PropertyValue) -> Result<LtkValue> {
     let ltk_val = match val {
         // Primitives
         PropertyValue::Bool(v) => LtkValue::Bool(Bool { value: *v }),
@@ -172,7 +171,7 @@ pub fn hematite_value_to_ltk(val: &PropertyValue) -> Result<LtkValue> {
             let packed = u32::from_le_bytes(*rgba);
             LtkValue::U32(U32 { value: packed })
         }
-        PropertyValue::BitBool(v) => LtkValue::Bool(Bool { value: *v != 0 })
+        PropertyValue::BitBool(v) => LtkValue::Bool(Bool { value: *v != 0 }),
 
         // Nested structures
         PropertyValue::Struct(s) => {
@@ -227,20 +226,11 @@ fn ltk_struct_to_hematite(ltk_struct: &Struct) -> Result<StructValue> {
 }
 
 /// Convert Hematite StructValue to LTK Struct.
-fn hematite_struct_to_ltk(s: &StructValue) -> Result<Struct> {
-    let mut properties = IndexMap::new();
-
-    for (name_hash, prop) in &s.properties {
-        let ltk_prop = LtkBinProperty {
-            value: hematite_value_to_ltk(&prop.value)?,
-        };
-        properties.insert(*name_hash, ltk_prop);
-    }
-
-    Ok(Struct {
-        class_hash: s.class_hash.0,
-        properties,
-    })
+///
+/// **NOT IMPLEMENTED**: LTK types have private fields.
+#[allow(dead_code)]
+fn hematite_struct_to_ltk(_s: &StructValue) -> Result<Struct> {
+    bail!("BIN struct writing not yet implemented")
 }
 
 /// Convert LTK Container enum to Vec<PropertyValue>.
@@ -345,7 +335,16 @@ fn ltk_container_to_vec(c: &Container) -> Result<Vec<PropertyValue>> {
 }
 
 /// Convert Vec<PropertyValue> to LTK Container (infers type from first element).
-fn vec_to_ltk_container(items: &[PropertyValue]) -> Result<LtkValue> {
+///
+/// **NOT IMPLEMENTED**: LTK types have private fields.
+#[allow(dead_code)]
+fn vec_to_ltk_container(_items: &[PropertyValue]) -> Result<LtkValue> {
+    bail!("Container writing not yet implemented")
+}
+
+#[cfg(any())] // Disable compilation - old broken code
+#[allow(dead_code)]
+fn _vec_to_ltk_container_old(items: &[PropertyValue]) -> Result<LtkValue> {
     if items.is_empty() {
         return Ok(LtkValue::Container(Container::U8 { items: Vec::new() }));
     }
@@ -559,6 +558,7 @@ fn vec_to_ltk_container(items: &[PropertyValue]) -> Result<LtkValue> {
 /// Convert LTK Optional enum to Option<PropertyValue>.
 fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
     let opt = match o {
+        Optional::None(_) => None,
         Optional::Bool(v) => v.as_ref().map(|inner| PropertyValue::Bool(inner.value)),
         Optional::I8(v) => v.as_ref().map(|inner| PropertyValue::I8(inner.value)),
         Optional::U8(v) => v.as_ref().map(|inner| PropertyValue::U8(inner.value)),
@@ -583,13 +583,26 @@ fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
             Some(e) => Some(PropertyValue::Embedded(ltk_struct_to_hematite(&e.0)?)),
             None => None,
         },
+        Optional::Color(v) => v.as_ref().map(|inner| PropertyValue::Color([inner.value.r, inner.value.g, inner.value.b, inner.value.a])),
+        Optional::WadChunkLink(v) => v.as_ref().map(|inner| PropertyValue::Link(inner.value.try_into().expect("WadChunkLink u64 overflow"))),
+        Optional::ObjectLink(v) => v.as_ref().map(|inner| PropertyValue::Link(inner.value)),
+        Optional::BitBool(v) => v.as_ref().map(|inner| PropertyValue::BitBool(if inner.value { 1 } else { 0 })),
     };
 
     Ok(opt)
 }
 
 /// Convert Option<PropertyValue> to LTK Optional (infers type from Some value).
-fn option_to_ltk_optional(opt: &Option<PropertyValue>) -> Result<LtkValue> {
+///
+/// **NOT IMPLEMENTED**: LTK types have private fields.
+#[allow(dead_code)]
+fn option_to_ltk_optional(_opt: &Option<PropertyValue>) -> Result<LtkValue> {
+    bail!("Optional writing not yet implemented")
+}
+
+#[cfg(any())] // Disable compilation - old broken code
+#[allow(dead_code)]
+fn _option_to_ltk_optional_old(opt: &Option<PropertyValue>) -> Result<LtkValue> {
     let ltk_opt = match opt {
         None => LtkValue::Optional(Optional::U8(None)),
         Some(val) => {

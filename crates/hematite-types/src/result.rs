@@ -17,6 +17,18 @@ pub struct ProcessResult {
     pub duration: Option<Duration>,
 }
 
+impl ProcessResult {
+    /// Merge another result into this one.
+    pub fn merge(&mut self, other: ProcessResult) {
+        self.files_processed += other.files_processed;
+        self.fixes_applied += other.fixes_applied;
+        self.fixes_failed += other.fixes_failed;
+        self.files_removed += other.files_removed;
+        self.errors.extend(other.errors);
+        self.applied_fixes.extend(other.applied_fixes);
+    }
+}
+
 /// Record of a single fix that was successfully applied.
 #[derive(Debug, Clone)]
 pub struct AppliedFix {
