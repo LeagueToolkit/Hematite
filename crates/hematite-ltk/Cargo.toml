@@ -7,12 +7,16 @@ authors.workspace = true
 
 [dependencies]
 hematite-types = { workspace = true }
+hematite-core = { path = "../hematite-core" }
 anyhow = { workspace = true }
 indexmap = { workspace = true }
 
 # League file parsing — THIS IS THE ONLY CRATE THAT DEPENDS ON LTK
 # When LTK breaks its API, only this crate needs updating.
 league-toolkit = { version = "0.2", features = ["wad", "meta"] }
+
+# Math types (glam is used by LTK for vectors/matrices)
+glam = "0.29"
 
 # Hashing (for WAD path hashing)
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
