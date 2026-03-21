@@ -14,33 +14,92 @@
 //!         changes = transform::apply_transform(&rule.apply, &mut ctx)
 //!         track result
 //! ```
-//!
-//! ## TODO
-//! - [ ] Implement apply_fixes() orchestration function
-//! - [ ] Handle detection-before-transform pattern (verify issue still exists)
-//! - [ ] Track per-fix results in ProcessResult
-//! - [ ] Support dry-run mode (detect only, no transforms)
 
-use hematite_types::config::FixConfig;
-use hematite_types::result::ProcessResult;
+use hematite_types::config::{DetectionRule, FixConfig};
+use hematite_types::result::{AppliedFix, ProcessResult};
 use crate::context::FixContext;
+use crate::detect::detect_issue;
+use crate::transform::apply_transform;
 
 /// Run selected fixes against a BIN tree.
 ///
 /// Returns the modified BinTree (inside the context) and a result summary.
-///
-/// ## TODO
-/// - [ ] Implement this
 pub fn apply_fixes(
-    _ctx: &mut FixContext<'_>,
-    _config: &FixConfig,
-    _selected_fix_ids: &[String],
-    _dry_run: bool,
+    ctx: &mut FixContext<'_>,
+    config: &FixConfig,
+    selected_fix_ids: &[String],
+    dry_run: bool,
 ) -> ProcessResult {
-    // TODO: Implement fix orchestration
-    // 1. For each fix_id, look up the rule in config
-    // 2. Run detect::detect_issue() with the detection rule
-    // 3. If detected and not dry_run, run transform::apply_transform()
-    // 4. Track results
-    ProcessResult::default()
+    let mut result = ProcessResult {
+        files_processed: 1,
+        ..Default::default()
+    };
+
+    for fix_id in selected_fix_ids {
+        let Some(fix_rule) = config.fixes.get(fix_id) else {
+            result.errors.push(format!("Fix rule not found: {}", fix_id));
+            continue;
+        };
+
+        if !fix_rule.enabled {
+            continue;
+        }
+
+        let detected = detect_issue(
+            &fix_rule.detect,
+            &ctx.tree,
+            ctx.hashes,
+            ctx.wad,
+        );
+
+        if detected {
+            if dry_run {
+                result.fixes_applied += 1;
+                result.applied_fixes.push(AppliedFix {
+                    fix_id: fix_id.clone(),
+                    fix_name: fix_rule.name.clone(),
+                    changes_count: 0,
+                    file_path: ctx.file_path.clone(),
+                });
+            } else {
+                let entry_type = extract_entry_type(&fix_rule.detect);
+                let changes = apply_transform(&fix_rule.apply, ctx, entry_type);
+
+                if changes > 0 {
+                    result.fixes_applied += 1;
+                    result.applied_fixes.push(AppliedFix {
+                        fix_id: fix_id.clone(),
+                        fix_name: fix_rule.name.clone(),
+                        changes_count: changes,
+                        file_path: ctx.file_path.clone(),
+                    });
+                } else {
+                    result.fixes_failed += 1;
+                    result.errors.push(format!(
+                        "Fix '{}' detected but no changes applied",
+                        fix_id
+                    ));
+                }
+            }
+        }
+    }
+
+    result.files_removed = ctx.files_to_remove.len() as u32;
+    result
+}
+
+/// Extract entry_type from a detection rule (if it has one).
+///
+/// Some detection rules target specific object types and include an entry_type field.
+/// Object-specific transforms (EnsureField, VfxShapeFix) need this to filter objects.
+fn extract_entry_type(rule: &DetectionRule) -> Option<&str> {
+    match rule {
+        DetectionRule::MissingOrWrongField { entry_type, .. }
+        | DetectionRule::FieldHashExists { entry_type, .. }
+        | DetectionRule::StringExtensionNotInWad { entry_type, .. }
+        | DetectionRule::VfxShapeNeedsFix { entry_type, .. } => Some(entry_type.as_str()),
+        DetectionRule::RecursiveStringExtensionNotInWad { .. }
+        | DetectionRule::EntryTypeExistsAny { .. }
+        | DetectionRule::BnkVersionNotIn { .. } => None,
+    }
 }
