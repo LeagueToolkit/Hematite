@@ -1086,6 +1086,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "league-toolkit"
 version = "0.2.18"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "ltk_anim",
  "ltk_file",
@@ -1130,6 +1131,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 [[package]]
 name = "ltk_anim"
 version = "0.3.2"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "bitflags",
  "bytemuck",
@@ -1144,6 +1146,7 @@ dependencies = [
 [[package]]
 name = "ltk_file"
 version = "0.2.8"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "strum",
 ]
@@ -1151,10 +1154,12 @@ dependencies = [
 [[package]]
 name = "ltk_hash"
 version = "0.2.5"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 
 [[package]]
 name = "ltk_io_ext"
 version = "0.4.1"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "byteorder",
  "glam",
@@ -1165,6 +1170,7 @@ dependencies = [
 [[package]]
 name = "ltk_mesh"
 version = "0.4.1"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "bitflags",
  "byteorder",
@@ -1179,6 +1185,7 @@ dependencies = [
 [[package]]
 name = "ltk_meta"
 version = "0.4.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "byteorder",
  "enum_dispatch",
@@ -1196,6 +1203,7 @@ dependencies = [
 [[package]]
 name = "ltk_primitives"
 version = "0.3.2"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "byteorder",
  "glam",
@@ -1205,6 +1213,7 @@ dependencies = [
 [[package]]
 name = "ltk_texture"
 version = "0.4.4"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "bitflags",
  "byteorder",
@@ -1220,6 +1229,7 @@ dependencies = [
 [[package]]
 name = "ltk_wad"
 version = "0.2.13"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "byteorder",
  "camino",
