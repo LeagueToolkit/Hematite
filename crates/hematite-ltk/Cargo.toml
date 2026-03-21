@@ -13,10 +13,11 @@ indexmap = { workspace = true }
 
 # League file parsing — THIS IS THE ONLY CRATE THAT DEPENDS ON LTK
 # When LTK breaks its API, only this crate needs updating.
-league-toolkit = { version = "0.2", features = ["wad", "meta"] }
+# Using local dev version for latest updates (not on crates.io yet)
+league-toolkit = { path = "../../../league-toolkit/crates/league-toolkit", features = ["wad", "meta"] }
 
-# Math types (glam is used by LTK for vectors/matrices)
-glam = "0.29"
+# Math types (must match LTK's glam version: 0.27)
+glam = "0.27"
 
 # Hashing (for WAD path hashing)
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
