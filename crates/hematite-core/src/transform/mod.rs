@@ -27,23 +27,41 @@ use crate::context::FixContext;
 
 /// Main transform dispatch. Returns number of changes applied.
 ///
-/// ## TODO
-/// - [ ] Implement match on all TransformAction variants
+/// The entry_type parameter is used by transforms that need to filter objects
+/// (EnsureField, VfxShapeFix). It should come from the detection rule's entry_type.
 pub fn apply_transform(
-    _action: &TransformAction,
-    _ctx: &mut FixContext<'_>,
+    action: &TransformAction,
+    ctx: &mut FixContext<'_>,
+    entry_type: Option<&str>,
 ) -> u32 {
-    // TODO: Match on action variant, delegate to specific transform function
-    //
-    // match action {
-    //     TransformAction::EnsureField { .. } => ensure_field::apply(..),
-    //     TransformAction::RenameHash { .. } => rename_hash::apply(..),
-    //     TransformAction::ReplaceStringExtension { .. } => replace_ext::apply(..),
-    //     TransformAction::RemoveFromWad => remove::apply(..),
-    //     TransformAction::ChangeFieldType { .. } => change_type::apply(..),
-    //     TransformAction::RegexReplace { .. } => regex_ops::apply_replace(..),
-    //     TransformAction::RegexRenameField { .. } => regex_ops::apply_rename(..),
-    //     TransformAction::VfxShapeFix => vfx_shape::apply(..),
-    // }
-    0
+    match action {
+        TransformAction::EnsureField { field, value, data_type, create_parent } => {
+            let Some(entry_type) = entry_type else {
+                return 0;
+            };
+            let data_type_str = format!("{:?}", data_type).to_lowercase();
+            ensure_field::apply(ctx, entry_type, field, value, &data_type_str, create_parent.as_ref())
+        }
+        TransformAction::RenameHash { from_hash, to_hash } => {
+            rename_hash::apply(ctx, from_hash, to_hash)
+        }
+        TransformAction::ReplaceStringExtension { from, to } => {
+            replace_ext::apply(ctx, from, to)
+        }
+        TransformAction::RemoveFromWad => {
+            remove::apply(ctx)
+        }
+        TransformAction::ChangeFieldType { from_type, to_type, append_values, .. } => {
+            change_type::apply(ctx, from_type, to_type, append_values)
+        }
+        TransformAction::RegexReplace { pattern, replacement, field_filter } => {
+            regex_ops::apply_replace(ctx, pattern, replacement, field_filter.as_deref())
+        }
+        TransformAction::RegexRenameField { pattern, replacement } => {
+            regex_ops::apply_rename(ctx, pattern, replacement)
+        }
+        TransformAction::VfxShapeFix => {
+            0
+        }
+    }
 }
