@@ -3,13 +3,10 @@
 //! Parses BNK (Wwise SoundBank) files to extract version information
 //! from the BKHD (Bank Header) section.
 //!
-//! Supported versions:
-//! - 134 (compatible)
-//! - 145 (compatible)
-//! - Other versions are flagged for removal
-
-/// Allowed BNK versions that should be kept
-pub const ALLOWED_BNK_VERSIONS: &[u32] = &[134, 145];
+//! Version handling (matches TopazModFixer):
+//! - Versions < current are OLD and flagged for removal (e.g., 134 from older patches)
+//! - Current version should be kept (configurable via JSON)
+//! - Versions > current indicate the tool may need updating
 
 /// Information about a parsed BNK file
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,10 +27,11 @@ pub struct BnkInfo {
 ///
 /// # Arguments
 /// * `data` - Raw BNK file bytes
+/// * `min_version` - Minimum allowed version (versions below this are removed)
 ///
 /// # Returns
 /// * `BnkInfo` with version and removal decision
-pub fn parse_bnk_version(data: &[u8]) -> BnkInfo {
+pub fn parse_bnk_version(data: &[u8], min_version: u32) -> BnkInfo {
     // Need at least 12 bytes: section ID (4) + length (4) + version (4)
     if data.len() < 12 {
         return BnkInfo {
@@ -69,14 +67,14 @@ pub fn parse_bnk_version(data: &[u8]) -> BnkInfo {
                     data[offset + 11],
                 ]);
 
-                let should_remove = !ALLOWED_BNK_VERSIONS.contains(&version);
-                let reason = if should_remove {
-                    format!(
-                        "Version {} not in allowed list {:?}",
-                        version, ALLOWED_BNK_VERSIONS
-                    )
+                let should_remove = version < min_version;
+                let reason = if version < min_version {
+                    format!("Version {} is outdated (minimum: {})", version, min_version)
+                } else if version == min_version {
+                    format!("Version {} is current", version)
                 } else {
-                    format!("Version {} is allowed", version)
+                    // version > min_version
+                    format!("Version {} is newer than expected (tool may need update)", version)
                 };
 
                 return BnkInfo {
@@ -128,7 +126,7 @@ mod tests {
     #[test]
     fn test_parse_empty_data() {
         let data = vec![];
-        let info = parse_bnk_version(&data);
+        let info = parse_bnk_version(&data, 145);
         assert!(info.version.is_none());
         assert!(info.should_remove);
     }
@@ -136,14 +134,14 @@ mod tests {
     #[test]
     fn test_parse_too_small() {
         let data = vec![0u8; 8];
-        let info = parse_bnk_version(&data);
+        let info = parse_bnk_version(&data, 145);
         assert!(info.version.is_none());
         assert!(info.should_remove);
     }
 
     #[test]
-    fn test_parse_valid_bkhd_v134() {
-        // Construct a minimal BKHD section with version 134
+    fn test_parse_outdated_bkhd_v134() {
+        // Construct a minimal BKHD section with version 134 (OLD version)
         let mut data = Vec::new();
 
         // Section ID: "BKHD"
@@ -152,41 +150,61 @@ mod tests {
         // Section length: 8 bytes (version + some data)
         data.extend_from_slice(&8u32.to_le_bytes());
 
-        // Version: 134
+        // Version: 134 (old patch version)
         data.extend_from_slice(&134u32.to_le_bytes());
 
         // Some padding
         data.extend_from_slice(&0u32.to_le_bytes());
 
-        let info = parse_bnk_version(&data);
+        let info = parse_bnk_version(&data, 145);
         assert_eq!(info.version, Some(134));
-        assert!(!info.should_remove); // 134 is allowed
+        assert!(info.should_remove); // 134 is outdated and should be removed
+        assert!(info.reason.contains("outdated"));
     }
 
     #[test]
-    fn test_parse_valid_bkhd_v145() {
+    fn test_parse_current_bkhd_v145() {
+        // Version 145 is the current version and should be kept
         let mut data = Vec::new();
         data.extend_from_slice(b"BKHD");
         data.extend_from_slice(&8u32.to_le_bytes());
         data.extend_from_slice(&145u32.to_le_bytes());
         data.extend_from_slice(&0u32.to_le_bytes());
 
-        let info = parse_bnk_version(&data);
+        let info = parse_bnk_version(&data, 145);
         assert_eq!(info.version, Some(145));
-        assert!(!info.should_remove); // 145 is allowed
+        assert!(!info.should_remove); // 145 is current and should be kept
+        assert!(info.reason.contains("current"));
     }
 
     #[test]
-    fn test_parse_invalid_version() {
+    fn test_parse_old_version() {
+        // Test with an old version (100 < 145)
         let mut data = Vec::new();
         data.extend_from_slice(b"BKHD");
         data.extend_from_slice(&8u32.to_le_bytes());
-        data.extend_from_slice(&100u32.to_le_bytes()); // Invalid version
+        data.extend_from_slice(&100u32.to_le_bytes());
         data.extend_from_slice(&0u32.to_le_bytes());
 
-        let info = parse_bnk_version(&data);
+        let info = parse_bnk_version(&data, 145);
         assert_eq!(info.version, Some(100));
-        assert!(info.should_remove); // 100 is not allowed
+        assert!(info.should_remove); // Old version should be removed
+        assert!(info.reason.contains("outdated"));
+    }
+
+    #[test]
+    fn test_parse_newer_version() {
+        // Test with a newer version (150 > 145) - should keep but warn
+        let mut data = Vec::new();
+        data.extend_from_slice(b"BKHD");
+        data.extend_from_slice(&8u32.to_le_bytes());
+        data.extend_from_slice(&150u32.to_le_bytes());
+        data.extend_from_slice(&0u32.to_le_bytes());
+
+        let info = parse_bnk_version(&data, 145);
+        assert_eq!(info.version, Some(150));
+        assert!(!info.should_remove); // Newer versions are kept (just log a warning)
+        assert!(info.reason.contains("newer"));
     }
 
     #[test]

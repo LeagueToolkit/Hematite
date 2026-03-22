@@ -126,13 +126,12 @@
         },
         "bnk_remover": {
             "name": "Broken Sound Files",
-            "description": "Removes BNK audio files with incompatible versions",
+            "description": "Removes BNK audio files with outdated versions (uses max of allowed_versions as minimum)",
             "enabled": true,
             "severity": "low",
             "detect": {
                 "type": "bnk_version_not_in",
                 "allowed_versions": [
-                    134,
                     145
                 ]
             },

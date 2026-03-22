@@ -170,6 +170,19 @@ fn process_wad_file(
     if selected_fixes.contains(&"bnk_remover".to_string()) {
         tracing::debug!("BNK remover fix is enabled, checking for BNK files...");
 
+        // Get min_version from config (use max of allowed_versions)
+        let min_version = config.fixes.get("bnk_remover")
+            .and_then(|fix| {
+                if let hematite_types::config::DetectionRule::BnkVersionNotIn { allowed_versions } = &fix.detect {
+                    allowed_versions.iter().max().copied()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(145); // Fallback to 145 if not found
+
+        tracing::debug!("BNK minimum version: {}", min_version);
+
         let bnk_chunks = wad_file.extract_bnk_files(&hash_provider)
             .context("Failed to extract BNK files from WAD")?;
 
@@ -177,7 +190,7 @@ fn process_wad_file(
             tracing::info!("Found {} BNK files in WAD", bnk_chunks.len());
 
             for (path, bytes) in &bnk_chunks {
-                let info = parse_bnk_version(bytes);
+                let info = parse_bnk_version(bytes, min_version);
 
                 if info.should_remove {
                     tracing::info!("Marking BNK for removal: {} - {}", path, info.reason);
