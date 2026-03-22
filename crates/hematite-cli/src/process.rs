@@ -412,6 +412,20 @@ fn process_fantome_file(
     let temp_dir = tempfile::tempdir()
         .context("Failed to create temp directory")?;
 
+    // SECURITY: Limits to prevent DoS attacks (ZIP bombs, memory exhaustion)
+    const MAX_ENTRIES: usize = 1000;
+    const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024; // 500MB per file
+    const MAX_TOTAL_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2GB total
+
+    if archive.len() > MAX_ENTRIES {
+        anyhow::bail!(
+            "ZIP archive contains too many entries ({} > {}). Possible ZIP bomb attack.",
+            archive.len(),
+            MAX_ENTRIES
+        );
+    }
+
+    let mut total_extracted_size: u64 = 0;
     let mut wad_paths = Vec::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)
@@ -431,6 +445,27 @@ fn process_fantome_file(
             if entry_name.split('/').any(|component| component == "..") ||
                entry_name.split('\\').any(|component| component == "..") {
                 anyhow::bail!("Invalid ZIP entry path (contains .. component): {}", entry_name);
+            }
+
+            // SECURITY: Check uncompressed size before extraction
+            let uncompressed_size = entry.size();
+            if uncompressed_size > MAX_FILE_SIZE {
+                anyhow::bail!(
+                    "ZIP entry '{}' is too large ({} bytes > {} bytes limit). Possible ZIP bomb.",
+                    entry_name,
+                    uncompressed_size,
+                    MAX_FILE_SIZE
+                );
+            }
+
+            // SECURITY: Check total extracted size
+            total_extracted_size = total_extracted_size.saturating_add(uncompressed_size);
+            if total_extracted_size > MAX_TOTAL_SIZE {
+                anyhow::bail!(
+                    "Total extracted size exceeds limit ({} bytes > {} bytes). Possible ZIP bomb.",
+                    total_extracted_size,
+                    MAX_TOTAL_SIZE
+                );
             }
 
             let dest = temp_dir.path().join(entry_name);

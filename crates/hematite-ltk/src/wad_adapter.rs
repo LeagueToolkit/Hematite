@@ -98,6 +98,10 @@ impl WadFile<BufReader<std::fs::File>> {
 }
 
 impl<R: Read + Seek> WadFile<R> {
+    // SECURITY: Limits to prevent resource exhaustion from malicious WAD files
+    const MAX_CHUNK_SIZE: u64 = 100 * 1024 * 1024; // 100MB per chunk
+    const MAX_TOTAL_EXTRACTED: u64 = 2 * 1024 * 1024 * 1024; // 2GB total
+
     /// Build an `LtkWadProvider` from this WAD's chunk list.
     pub fn build_provider(&self) -> LtkWadProvider {
         let mut provider = LtkWadProvider::new();
@@ -126,12 +130,34 @@ impl<R: Read + Seek> WadFile<R> {
             .collect();
 
         let mut results = Vec::with_capacity(bin_chunks.len());
+        let mut total_extracted: u64 = 0;
 
         for (path_hash, path) in bin_chunks {
             let Some(chunk) = self.wad.chunks().get(path_hash) else {
                 continue;
             };
             let chunk = *chunk;
+
+            // SECURITY: Check chunk size before extraction
+            let chunk_size = chunk.uncompressed_size as u64;
+            if chunk_size > Self::MAX_CHUNK_SIZE {
+                tracing::warn!(
+                    "Skipping large BIN chunk {path}: {} bytes exceeds {} bytes limit",
+                    chunk_size,
+                    Self::MAX_CHUNK_SIZE
+                );
+                continue;
+            }
+
+            // SECURITY: Check total extracted size
+            total_extracted = total_extracted.saturating_add(chunk_size);
+            if total_extracted > Self::MAX_TOTAL_EXTRACTED {
+                anyhow::bail!(
+                    "Total extracted BIN size exceeds limit: {} bytes > {} bytes",
+                    total_extracted,
+                    Self::MAX_TOTAL_EXTRACTED
+                );
+            }
 
             match self.wad.load_chunk_decompressed(&chunk) {
                 Ok(data) => {
@@ -160,12 +186,34 @@ impl<R: Read + Seek> WadFile<R> {
             .collect();
 
         let mut results = Vec::with_capacity(all_chunks.len());
+        let mut total_extracted: u64 = 0;
 
         for (path_hash, path) in all_chunks {
             let Some(chunk) = self.wad.chunks().get(path_hash) else {
                 continue;
             };
             let chunk = *chunk;
+
+            // SECURITY: Check chunk size before extraction
+            let chunk_size = chunk.uncompressed_size as u64;
+            if chunk_size > Self::MAX_CHUNK_SIZE {
+                tracing::warn!(
+                    "Skipping large chunk {path}: {} bytes exceeds {} bytes limit",
+                    chunk_size,
+                    Self::MAX_CHUNK_SIZE
+                );
+                continue;
+            }
+
+            // SECURITY: Check total extracted size
+            total_extracted = total_extracted.saturating_add(chunk_size);
+            if total_extracted > Self::MAX_TOTAL_EXTRACTED {
+                anyhow::bail!(
+                    "Total extracted size from WAD exceeds limit: {} bytes > {} bytes",
+                    total_extracted,
+                    Self::MAX_TOTAL_EXTRACTED
+                );
+            }
 
             match self.wad.load_chunk_decompressed(&chunk) {
                 Ok(data) => {
@@ -199,12 +247,34 @@ impl<R: Read + Seek> WadFile<R> {
             .collect();
 
         let mut results = Vec::with_capacity(bnk_chunks.len());
+        let mut total_extracted: u64 = 0;
 
         for (path_hash, path) in bnk_chunks {
             let Some(chunk) = self.wad.chunks().get(path_hash) else {
                 continue;
             };
             let chunk = *chunk;
+
+            // SECURITY: Check chunk size before extraction
+            let chunk_size = chunk.uncompressed_size as u64;
+            if chunk_size > Self::MAX_CHUNK_SIZE {
+                tracing::warn!(
+                    "Skipping large BNK chunk {path}: {} bytes exceeds {} bytes limit",
+                    chunk_size,
+                    Self::MAX_CHUNK_SIZE
+                );
+                continue;
+            }
+
+            // SECURITY: Check total extracted size
+            total_extracted = total_extracted.saturating_add(chunk_size);
+            if total_extracted > Self::MAX_TOTAL_EXTRACTED {
+                anyhow::bail!(
+                    "Total extracted BNK size exceeds limit: {} bytes > {} bytes",
+                    total_extracted,
+                    Self::MAX_TOTAL_EXTRACTED
+                );
+            }
 
             match self.wad.load_chunk_decompressed(&chunk) {
                 Ok(data) => {

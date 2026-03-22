@@ -56,7 +56,8 @@ impl SkinDetector {
     /// Create a new skin detector
     pub fn new() -> Self {
         // Pattern to match skin numbers in various formats
-        let skin_pattern = Regex::new(r"(?i)skin(\d{1,2})").unwrap();
+        let skin_pattern = Regex::new(r"(?i)skin(\d{1,2})")
+            .expect("BUG: hardcoded regex pattern is invalid");
 
         Self { skin_pattern }
     }

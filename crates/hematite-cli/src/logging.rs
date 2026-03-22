@@ -16,9 +16,12 @@ pub fn init(verbosity: &Verbosity, json_mode: bool) {
 
     let filter = EnvFilter::from_default_env()
         .add_directive(level.into())
-        .add_directive("hematite_cli=debug".parse().unwrap())
-        .add_directive("hematite_core=debug".parse().unwrap())
-        .add_directive("hematite_ltk=debug".parse().unwrap());
+        .add_directive("hematite_cli=debug".parse()
+            .expect("BUG: hardcoded directive is invalid"))
+        .add_directive("hematite_core=debug".parse()
+            .expect("BUG: hardcoded directive is invalid"))
+        .add_directive("hematite_ltk=debug".parse()
+            .expect("BUG: hardcoded directive is invalid"));
 
     if json_mode {
         // JSON output for automation
