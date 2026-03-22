@@ -102,7 +102,10 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
         // Strings & hashes
         LtkValue::String(v) => PropertyValue::String(v.value.clone()),
         LtkValue::Hash(v) => PropertyValue::Hash(v.value),
-        LtkValue::WadChunkLink(v) => PropertyValue::Link(v.value.try_into().expect("WadChunkLink u64 overflow")),
+        LtkValue::WadChunkLink(v) => PropertyValue::Link(
+            v.value.try_into()
+                .map_err(|_| anyhow::anyhow!("WadChunkLink value {} exceeds u32::MAX", v.value))?
+        ),
         LtkValue::ObjectLink(v) => PropertyValue::Link(v.value),
         LtkValue::Color(v) => PropertyValue::Color([v.value.r, v.value.g, v.value.b, v.value.a]),
         LtkValue::BitBool(v) => PropertyValue::BitBool(if v.value { 1 } else { 0 }),
@@ -881,7 +884,13 @@ fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
             None => None,
         },
         Optional::Color(v) => v.as_ref().map(|inner| PropertyValue::Color([inner.value.r, inner.value.g, inner.value.b, inner.value.a])),
-        Optional::WadChunkLink(v) => v.as_ref().map(|inner| PropertyValue::Link(inner.value.try_into().expect("WadChunkLink u64 overflow"))),
+        Optional::WadChunkLink(v) => match v {
+            Some(inner) => Some(PropertyValue::Link(
+                inner.value.try_into()
+                    .map_err(|_| anyhow::anyhow!("WadChunkLink value {} exceeds u32::MAX", inner.value))?
+            )),
+            None => None,
+        },
         Optional::ObjectLink(v) => v.as_ref().map(|inner| PropertyValue::Link(inner.value)),
         Optional::BitBool(v) => v.as_ref().map(|inner| PropertyValue::BitBool(if inner.value { 1 } else { 0 })),
     };

@@ -419,7 +419,22 @@ fn process_fantome_file(
 
         let name = entry.name().to_lowercase();
         if name.ends_with(".wad.client") {
-            let dest = temp_dir.path().join(entry.name());
+            // SECURITY: Validate ZIP entry path to prevent path traversal attacks
+            let entry_name = entry.name();
+
+            // Check for path traversal patterns
+            if entry_name.contains("..") || std::path::Path::new(entry_name).is_absolute() {
+                anyhow::bail!("Invalid ZIP entry path (potential path traversal): {}", entry_name);
+            }
+
+            // Additional check: ensure no path component is exactly ".."
+            if entry_name.split('/').any(|component| component == "..") ||
+               entry_name.split('\\').any(|component| component == "..") {
+                anyhow::bail!("Invalid ZIP entry path (contains .. component): {}", entry_name);
+            }
+
+            let dest = temp_dir.path().join(entry_name);
+
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)?;
             }
