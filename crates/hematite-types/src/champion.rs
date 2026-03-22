@@ -5,9 +5,6 @@
 //! - Subchamp mappings (e.g. Annie → Tibbers, Anivia → AniviaEgg)
 //! - Healthbar values for non-champion entities (turrets, monsters, etc.)
 //! - Reverse lookups: subchamp → primary champion
-//!
-//! ## Future
-//! - Port extract_champion_from_path() from old character_relations.rs
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};

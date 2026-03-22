@@ -95,10 +95,9 @@ enum DdsFormat {
     Unsupported,
 }
 
-/// Detect DDS compression format from header.
+/// Detect DDS compression format using size heuristics.
 ///
-/// TODO: This is a simplified heuristic. For production, we'd need to parse
-/// the DDS header's fourCC and DX10 format fields.
+/// Uses file size vs dimensions ratio to infer BC1/BC3/BGRA8 format.
 fn detect_dds_format(dds: &league_toolkit::texture::Dds) -> DdsFormat {
     // Heuristic based on file size vs dimensions
     // BC1: 0.5 bytes per pixel (8 bytes per 4x4 block)

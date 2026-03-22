@@ -10,10 +10,6 @@
 //! - [`BinObject`] — A single object/entry in the tree
 //! - [`BinProperty`] — A named property (field_hash + value)
 //! - [`PropertyValue`] — The value of a property (enum over all League types)
-//!
-//! ## Future
-//! - Implement Display for debugging
-//! - Add helper methods on BinTree (find_objects_by_type, etc.)
 
 use indexmap::IndexMap;
 use crate::hash::{TypeHash, FieldHash, PathHash};

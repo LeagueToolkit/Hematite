@@ -3,9 +3,6 @@
 //! WAD files are League's archive format containing BIN, DDS, SKN, and other assets.
 //! This module defines lightweight types for tracking which chunks exist and
 //! which modifications to apply during repacking.
-//!
-//! ## TODO
-//! - [ ] Add chunk compression type tracking if needed for rebuild
 
 use crate::hash::GameHash;
 

@@ -1,38 +1,8 @@
-//! PropertyWalker — single recursive traversal engine.
+//! Visitor pattern for recursive BIN tree traversal.
 //!
-//! **This replaces 6 separate recursive walk implementations** from the old codebase:
-//! - `bin_parser.rs::extract_strings_from_value`
-//! - `applier.rs::rename_hash_in_value`
-//! - `applier.rs::replace_extension_in_value`
-//! - `applier.rs::regex_replace_in_value`
-//! - `detector.rs::search_field_in_value`
-//! - `detector.rs::search_field_path`
-//!
-//! Instead of each fix module writing its own recursive match over PropertyValue,
-//! they implement the [`PropertyVisitor`] trait and let the walker handle traversal.
-//!
-//! ## Example usage (replacing ~90 LOC with ~15 LOC)
-//! ```ignore
-//! struct ExtReplacer<'a> { from: &'a str, to: &'a str, wad: &'a dyn WadProvider }
-//!
-//! impl PropertyVisitor for ExtReplacer<'_> {
-//!     fn visit_string(&mut self, value: &str, _hash: FieldHash) -> VisitResult {
-//!         if value.to_lowercase().ends_with(self.from) && !self.wad.has_path(value) {
-//!             VisitResult::Mutate(strings::replace_extension(value, self.from, self.to).unwrap())
-//!         } else {
-//!             VisitResult::Skip
-//!         }
-//!     }
-//! }
-//!
-//! let changes = walk::walk_object(&mut obj, &mut ExtReplacer { from, to, wad });
-//! ```
-//!
-//! ## Implementation
-//! - ✅ Recursive traversal over all PropertyValue variants
-//! - ✅ Handles String, Container, UnorderedContainer, Embedded, Struct, Optional, Map
-//! - ✅ Supports field hash renaming (keys in IndexMap)
-//! - ✅ Returns mutation count for all operations
+//! This module provides a single reusable walker that replaces 6 separate recursive
+//! implementations from the old codebase. Fix modules implement [`PropertyVisitor`]
+//! and let the walker handle traversal logic.
 
 use hematite_types::bin::{BinTree, BinObject, PropertyValue, StructValue};
 use hematite_types::hash::FieldHash;

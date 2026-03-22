@@ -6,22 +6,6 @@
 //!
 //! The schema is designed to be config-driven: new fixes can be added by
 //! editing JSON without changing Rust code (for simple detection/transform patterns).
-//!
-//! ## Fix rules in current config
-//! | Fix ID | Detection | Transform |
-//! |--------|-----------|-----------|
-//! | `healthbar_fix` | `MissingOrWrongField` | `EnsureField` |
-//! | `staticmat_texturepath` | `FieldHashExists` | `RenameHash` |
-//! | `staticmat_samplername` | `FieldHashExists` | `RenameHash` |
-//! | `black_icons` | `StringExtensionNotInWad` | `ReplaceStringExtension` |
-//! | `dds_to_tex` | `RecursiveStringExtensionNotInWad` | `ReplaceStringExtension` |
-//! | `champion_bin_remover` | `EntryTypeExistsAny` | `RemoveFromWad` |
-//! | `bnk_remover` | `BnkVersionNotIn` | `RemoveFromWad` |
-//! | `vfx_shape_fix` | `VfxShapeNeedsFix` | `VfxShapeFix` |
-//!
-//! ## Future
-//! - Port ContextualValues (champion/subchamp-specific overrides)
-//! - Add unit tests for JSON round-tripping
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
@@ -288,9 +272,6 @@ pub enum WadTransformAction {
 }
 
 /// All BIN data types for value creation.
-///
-/// ## TODO
-/// - [ ] Map these to PropertyValue variants in ValueFactory
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BinDataType {

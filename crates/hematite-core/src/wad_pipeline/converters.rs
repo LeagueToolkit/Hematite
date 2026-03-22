@@ -65,27 +65,18 @@ impl Default for ConverterRegistry {
 /// - Encode as `ltk_texture::Tex` with proper header
 /// - Use `Tex::encode_rgba_image()` or direct header construction
 ///
-/// **Current behavior**: Returns input unchanged (NO CONVERSION)
-/// This means the file will still have DDS format but TEX extension.
+/// Placeholder DDS→TEX converter (returns input unchanged).
+///
+/// Actual implementation is in hematite-ltk and registered at runtime.
 fn dds_to_tex(input: &[u8]) -> Result<Vec<u8>> {
-    // TODO: Implement actual DDS→TEX conversion using ltk_texture crate
-    // This requires:
-    // - Adding ltk_texture dependency to hematite-core (violates NO LTK rule)
-    // - OR moving converter implementation to hematite-ltk
-    // - OR implementing manual TEX header construction
-
     tracing::warn!("DDS→TEX conversion not implemented, file will retain DDS format");
     Ok(input.to_vec())
 }
 
-/// Convert SCO (SimpleSkin/ComplexSkin old) to SCB (SimpleSkin/ComplexSkin binary) format.
+/// Placeholder SCO→SCB converter (returns input unchanged).
 ///
-/// TODO: Implement actual SCO→SCB conversion logic.
-/// For now, this is a placeholder that returns the input unchanged.
+/// Actual implementation is in hematite-ltk and registered at runtime.
 fn sco_to_scb(input: &[u8]) -> Result<Vec<u8>> {
-    // TODO: Implement SCO→SCB conversion
-    // SCO is an older skin format, SCB is the newer binary format
-    // For now, return unchanged as a placeholder
     tracing::warn!("SCO→SCB conversion not yet implemented, returning unchanged");
     Ok(input.to_vec())
 }
