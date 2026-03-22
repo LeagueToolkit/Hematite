@@ -94,6 +94,12 @@ fn extract_entry_type(rule: &DetectionRule) -> Option<&str> {
         | DetectionRule::FieldHashExists { entry_type, .. }
         | DetectionRule::StringExtensionNotInWad { entry_type, .. }
         | DetectionRule::VfxShapeNeedsFix { entry_type, .. } => Some(entry_type.as_str()),
+        DetectionRule::InvalidShaderReference {
+            shader_def_type, ..
+        } => Some(shader_def_type.as_str()),
+        DetectionRule::UnreferencedEntryOfType {
+            main_entry_type, ..
+        } => Some(main_entry_type.as_str()),
         DetectionRule::RecursiveStringExtensionNotInWad { .. }
         | DetectionRule::EntryTypeExistsAny { .. }
         | DetectionRule::BnkVersionNotIn { .. } => None,

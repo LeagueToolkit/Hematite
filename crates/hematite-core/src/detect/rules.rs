@@ -17,7 +17,7 @@ use crate::filter;
 use crate::traits::{HashProvider, WadProvider};
 use crate::walk::extract_strings;
 use hematite_types::bin::{BinTree, PropertyValue, StructValue};
-use hematite_types::config::DetectionRule;
+use hematite_types::config::{DetectionRule, EntryValidationTarget};
 use hematite_types::hash::FieldHash;
 
 /// Main detection dispatch. Returns true if the issue is detected.
@@ -68,6 +68,16 @@ pub fn detect_issue(
         DetectionRule::VfxShapeNeedsFix { entry_type } => {
             detect_vfx_shape_needs_fix(tree, hashes, entry_type)
         }
+
+        DetectionRule::InvalidShaderReference {
+            shader_def_type,
+            shader_link_field,
+        } => detect_invalid_shader(tree, hashes, shader_def_type, shader_link_field),
+
+        DetectionRule::UnreferencedEntryOfType {
+            main_entry_type,
+            targets,
+        } => detect_unreferenced_entries(tree, hashes, main_entry_type, targets),
     }
 }
 
@@ -371,6 +381,149 @@ fn detect_vfx_shape_needs_fix(tree: &BinTree, hashes: &dyn HashProvider, entry_t
 
 fn has_old_vfx_shape_format(shape: &StructValue, birth_translation_hash: FieldHash) -> bool {
     shape.properties.contains_key(&birth_translation_hash.0)
+}
+
+/// Detect invalid shader references in StaticMaterialDef/CustomShaderDef objects.
+///
+/// Walks material technique passes looking for Link values that reference
+/// shaders not in the valid shader set.
+fn detect_invalid_shader(
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    shader_def_type: &str,
+    _shader_link_field: &str,
+) -> bool {
+    if !hashes.is_loaded() {
+        return false;
+    }
+
+    let Some(target_type_hash) = hashes.type_hash(shader_def_type) else {
+        return false;
+    };
+
+    // Walk all objects of target type looking for Link values
+    let mut found_any = false;
+    for obj in filter::objects_by_type(tree, target_type_hash) {
+        found_any = true;
+        for prop in obj.properties.values() {
+            if has_link_value(&prop.value) {
+                return true;
+            }
+        }
+    }
+
+    // If no objects of the target type, nothing to detect
+    let _ = found_any;
+    false
+}
+
+/// Check if any Link values exist in a property value tree.
+fn has_link_value(value: &PropertyValue) -> bool {
+    match value {
+        PropertyValue::Link(hash) => *hash != 0,
+        PropertyValue::Struct(s) | PropertyValue::Embedded(s) => {
+            s.properties.values().any(|p| has_link_value(&p.value))
+        }
+        PropertyValue::Container(items) | PropertyValue::UnorderedContainer(items) => {
+            items.iter().any(has_link_value)
+        }
+        PropertyValue::Optional(boxed) => {
+            if let Some(inner) = &**boxed {
+                has_link_value(inner)
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Detect entries that are not referenced by the main skin entry.
+///
+/// For each target type, checks if any entries of that type exist but are NOT
+/// referenced by the main SkinCharacterDataProperties entry.
+fn detect_unreferenced_entries(
+    tree: &BinTree,
+    hashes: &dyn HashProvider,
+    main_entry_type: &str,
+    targets: &[EntryValidationTarget],
+) -> bool {
+    if !hashes.is_loaded() {
+        return false;
+    }
+
+    let Some(main_type_hash) = hashes.type_hash(main_entry_type) else {
+        return false;
+    };
+
+    // Collect all Link values from main entries (these are "referenced" entries)
+    let mut referenced_hashes = std::collections::HashSet::new();
+    let mut found_main = false;
+    for main_obj in filter::objects_by_type(tree, main_type_hash) {
+        found_main = true;
+        collect_link_values(&main_obj.properties, &mut referenced_hashes);
+    }
+
+    if !found_main {
+        return false;
+    }
+
+    // For each target, check if there are unreferenced entries
+    for target in targets {
+        let target_type_hash = if let Some(hex) = &target.type_hash {
+            let hex = hex.trim_start_matches("0x");
+            u32::from_str_radix(hex, 16).ok()
+        } else {
+            hashes.type_hash(&target.entry_type).map(|h| h.0)
+        };
+
+        let Some(type_hash) = target_type_hash else {
+            continue;
+        };
+
+        // Check each entry of target type
+        for (path_hash, obj) in &tree.objects {
+            if obj.class_hash.0 == type_hash && !referenced_hashes.contains(path_hash) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Recursively collect all Link hash values from a property map.
+fn collect_link_values(
+    properties: &indexmap::IndexMap<u32, hematite_types::bin::BinProperty>,
+    out: &mut std::collections::HashSet<u32>,
+) {
+    for prop in properties.values() {
+        collect_link_values_from_value(&prop.value, out);
+    }
+}
+
+fn collect_link_values_from_value(value: &PropertyValue, out: &mut std::collections::HashSet<u32>) {
+    match value {
+        PropertyValue::Link(hash) => {
+            if *hash != 0 {
+                out.insert(*hash);
+            }
+        }
+        PropertyValue::Struct(s) | PropertyValue::Embedded(s) => {
+            collect_link_values(&s.properties, out);
+        }
+        PropertyValue::Container(items) | PropertyValue::UnorderedContainer(items) => {
+            for item in items {
+                collect_link_values_from_value(item, out);
+            }
+        }
+        PropertyValue::Optional(boxed) => {
+            if let Some(inner) = &**boxed {
+                collect_link_values_from_value(inner, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

@@ -21,7 +21,9 @@ pub fn ltk_tree_to_hematite(ltk_tree: LtkBin) -> Result<BinTree> {
         objects.insert(path_hash, obj);
     }
 
-    Ok(BinTree { objects })
+    let linked = ltk_tree.dependencies;
+
+    Ok(BinTree { objects, linked })
 }
 
 /// Convert Hematite BinTree to LTK Bin (before writing).
@@ -32,8 +34,7 @@ pub fn hematite_tree_to_ltk(tree: &BinTree) -> Result<LtkBin> {
         objects.push(hematite_object_to_ltk(obj)?);
     }
 
-    // No dependencies in hematite-v2 BinTree, so empty vec
-    Ok(LtkBin::new(objects, Vec::<std::string::String>::new()))
+    Ok(LtkBin::new(objects, tree.linked.clone()))
 }
 
 /// Convert single LTK BinObject to Hematite BinObject.

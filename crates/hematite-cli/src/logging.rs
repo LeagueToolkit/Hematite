@@ -111,3 +111,56 @@ pub fn log_session_summary(result: &hematite_types::result::ProcessResult, durat
     println!("\n{}: {:.2}s", "Duration".bright_white().bold(), duration);
     println!("{}", "═".repeat(60).bright_cyan());
 }
+
+/// Log check-mode summary (human-readable).
+pub fn log_check_summary(result: &hematite_types::result::ProcessResult) {
+    println!();
+    println!("{}", "═".repeat(60).bright_cyan());
+    println!("{}", "  Check Mode Results".bright_cyan().bold());
+    println!("{}", "═".repeat(60).bright_cyan());
+
+    if let Some(info) = &result.check_info {
+        println!(
+            "{}: {}",
+            "Champion".bright_white().bold(),
+            info.champion.as_deref().unwrap_or("unknown").yellow()
+        );
+        println!(
+            "{}: {}",
+            "Skin Number".bright_white().bold(),
+            info.skin_number
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "none".to_string())
+                .yellow()
+        );
+        println!(
+            "{}: {}",
+            "Binless Mod".bright_white().bold(),
+            if info.is_binless {
+                "yes".red().to_string()
+            } else {
+                "no".green().to_string()
+            }
+        );
+
+        if info.detected_issues.is_empty() {
+            println!(
+                "\n{}",
+                "No issues detected — mod looks clean!".green().bold()
+            );
+        } else {
+            println!(
+                "\n{} ({}):",
+                "Detected Issues".red().bold(),
+                info.detected_issues.len()
+            );
+            for issue in &info.detected_issues {
+                println!("  {} {}", "•".red(), issue.bright_white());
+            }
+        }
+    } else {
+        println!("{}", "No check info available".yellow());
+    }
+
+    println!("{}", "═".repeat(60).bright_cyan());
+}

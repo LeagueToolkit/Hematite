@@ -136,6 +136,76 @@
             "apply": {
                 "type": "vfx_shape_fix"
             }
+        },
+        "shader_fallback": {
+            "name": "Invalid Shader Fix",
+            "description": "Replaces invalid shader references with closest valid match using token similarity",
+            "enabled": true,
+            "severity": "critical",
+            "detect": {
+                "type": "invalid_shader_reference",
+                "shader_def_type": "CustomShaderDef",
+                "shader_link_field": "shaderLink"
+            },
+            "apply": {
+                "type": "shader_fallback",
+                "shader_def_type": "CustomShaderDef",
+                "shader_link_field": "shaderLink"
+            }
+        },
+        "entry_validator": {
+            "name": "Unreferenced Entry Cleanup",
+            "description": "Removes ContextualActionData, AnimationGraphData, and GearSkinUpgrade entries not referenced by main skin entry",
+            "enabled": true,
+            "severity": "high",
+            "detect": {
+                "type": "unreferenced_entry_of_type",
+                "main_entry_type": "SkinCharacterDataProperties",
+                "targets": [
+                    {
+                        "entry_type": "ContextualActionData",
+                        "type_hash": "0xCF3A2F44",
+                        "reference_field": "contextualActionData",
+                        "link_field": "0xd8f64a0d"
+                    },
+                    {
+                        "entry_type": "AnimationGraphData",
+                        "type_hash": "0xF5F9B3E7",
+                        "reference_field": "animationGraphData",
+                        "link_field": "0xf5fb07c7"
+                    },
+                    {
+                        "entry_type": "GearSkinUpgrade",
+                        "type_hash": "0x27E0C761",
+                        "reference_field": "materialOverrides",
+                        "link_field": "0xcb522723"
+                    }
+                ]
+            },
+            "apply": {
+                "type": "remove_unreferenced_entries",
+                "main_entry_type": "SkinCharacterDataProperties",
+                "targets": [
+                    {
+                        "entry_type": "ContextualActionData",
+                        "type_hash": "0xCF3A2F44",
+                        "reference_field": "contextualActionData",
+                        "link_field": "0xd8f64a0d"
+                    },
+                    {
+                        "entry_type": "AnimationGraphData",
+                        "type_hash": "0xF5F9B3E7",
+                        "reference_field": "animationGraphData",
+                        "link_field": "0xf5fb07c7"
+                    },
+                    {
+                        "entry_type": "GearSkinUpgrade",
+                        "type_hash": "0x27E0C761",
+                        "reference_field": "materialOverrides",
+                        "link_field": "0xcb522723"
+                    }
+                ]
+            }
         }
     },
     "wad_fixes": {
@@ -192,6 +262,19 @@
                 "from_ext": "sco",
                 "to_ext": "scb",
                 "converter": "sco_to_scb"
+            }
+        },
+        "anm_remover": {
+            "name": "Animation File Remover",
+            "description": "Removes .anm animation files to prevent conflicts with newer patches",
+            "enabled": true,
+            "severity": "low",
+            "detect": {
+                "type": "file_extension",
+                "extension": ".anm"
+            },
+            "apply": {
+                "type": "remove_file"
             }
         }
     }

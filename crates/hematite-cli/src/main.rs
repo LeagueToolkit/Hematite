@@ -49,20 +49,30 @@ fn main() -> Result<()> {
         logging::log_session_start(&cli.input.to_string_lossy(), &selected_fixes);
     }
 
+    // In check mode, force dry_run
+    let dry_run = cli.dry_run || cli.check;
+
     // Process input
     let result = process::process_input(
         &cli.input,
         &config,
         &selected_fixes,
         &champions,
-        cli.dry_run,
+        dry_run,
+        cli.check,
     )?;
 
     // Calculate duration
     let duration = start_time.elapsed().as_secs_f64();
 
     // Output results
-    if cli.json {
+    if cli.check {
+        if cli.json {
+            output_check_json(&result)?;
+        } else {
+            logging::log_check_summary(&result);
+        }
+    } else if cli.json {
         output_json(&result, duration)?;
     } else {
         logging::log_session_summary(&result, duration);
@@ -74,6 +84,17 @@ fn main() -> Result<()> {
     } else {
         anyhow::bail!("Processing completed with {} error(s)", result.errors.len());
     }
+}
+
+/// Output check-mode results as JSON.
+fn output_check_json(result: &hematite_types::result::ProcessResult) -> Result<()> {
+    if let Some(check_info) = &result.check_info {
+        let json = serde_json::to_string_pretty(check_info)?;
+        println!("{}", json);
+    } else {
+        println!("{{}}");
+    }
+    Ok(())
 }
 
 /// Output results as JSON for automation.

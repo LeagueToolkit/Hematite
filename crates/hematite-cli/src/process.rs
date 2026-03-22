@@ -13,7 +13,7 @@ use hematite_ltk::{
 };
 use hematite_types::champion::CharacterRelations;
 use hematite_types::config::FixConfig;
-use hematite_types::result::ProcessResult;
+use hematite_types::result::{CheckInfo, ProcessResult};
 use std::path::Path;
 use std::sync::Arc;
 use walkdir::WalkDir;
@@ -51,6 +51,7 @@ pub fn process_input(
     selected_fixes: &[String],
     champions: &CharacterRelations,
     dry_run: bool,
+    check: bool,
 ) -> Result<ProcessResult> {
     // Load hash provider once for all files
     let hash_provider = load_hash_provider()?;
@@ -70,6 +71,7 @@ pub fn process_input(
                     champions,
                     dry_run,
                     &hash_provider,
+                    check,
                 )?;
                 total_result.merge(result);
             }
@@ -82,6 +84,7 @@ pub fn process_input(
             champions,
             dry_run,
             &hash_provider,
+            check,
         )?;
     }
 
@@ -113,6 +116,7 @@ fn process_file_with_hashes(
     champions: &CharacterRelations,
     dry_run: bool,
     hash_provider: &Arc<dyn HashProvider>,
+    check: bool,
 ) -> Result<ProcessResult> {
     let ext = file
         .extension()
@@ -134,6 +138,7 @@ fn process_file_with_hashes(
             champions,
             dry_run,
             hash_provider,
+            check,
         )
     } else if file_name.ends_with(".wad.client") {
         process_wad_file(
@@ -143,6 +148,7 @@ fn process_file_with_hashes(
             champions,
             dry_run,
             hash_provider,
+            check,
         )
     } else if ext == "fantome" || ext == "zip" {
         process_fantome_file(
@@ -152,6 +158,7 @@ fn process_file_with_hashes(
             champions,
             dry_run,
             hash_provider,
+            check,
         )
     } else {
         anyhow::bail!("Unsupported file type: {}", file.display());
@@ -166,6 +173,7 @@ fn process_bin_file(
     champions: &CharacterRelations,
     dry_run: bool,
     hash_provider: &Arc<dyn HashProvider>,
+    check: bool,
 ) -> Result<ProcessResult> {
     tracing::info!("Processing BIN: {}", file.display());
 
@@ -190,6 +198,11 @@ fn process_bin_file(
     }
     let null_wad = NullWadProvider;
 
+    // Load shader validator (optional, graceful if unavailable)
+    let shader_validator = hematite_core::detect::shader::ShaderValidator::load()
+        .ok()
+        .filter(|v| v.is_available());
+
     // Create fix context
     let mut ctx = FixContext {
         tree,
@@ -198,10 +211,27 @@ fn process_bin_file(
         champions,
         files_to_remove: Vec::new(),
         file_path: file.to_string_lossy().to_string(),
+        linked_trees: std::collections::HashMap::new(),
+        shader_validator: shader_validator.as_ref(),
     };
 
     // Run fixes
-    let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+    let mut result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+
+    // In check mode, populate CheckInfo from detected issues
+    if check {
+        let detected: Vec<String> = result
+            .applied_fixes
+            .iter()
+            .map(|f| f.fix_name.clone())
+            .collect();
+        result.check_info = Some(CheckInfo {
+            champion: None,
+            skin_number: None,
+            is_binless: true, // standalone BIN = no WAD context
+            detected_issues: detected,
+        });
+    }
 
     // Write back if changes were made and not dry-run
     if !dry_run && result.fixes_applied > 0 {
@@ -236,6 +266,7 @@ fn process_wad_file(
     champions: &CharacterRelations,
     dry_run: bool,
     hash_provider: &Arc<dyn HashProvider>,
+    check: bool,
 ) -> Result<ProcessResult> {
     use hematite_core::wad_pipeline;
     use hematite_ltk::wad_adapter::WadFile;
@@ -331,16 +362,74 @@ fn process_wad_file(
         total_result.fixes_applied += conversion_count;
     }
 
-    // === BIN-LEVEL PIPELINE ===
+    // === LINKED BIN RESOLUTION (BFS) ===
+    // Parse all BINs, resolve linked dependencies from WAD files
+    let mut parsed_bins: std::collections::HashMap<String, hematite_types::bin::BinTree> =
+        std::collections::HashMap::new();
+    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
 
-    // Process BIN files
     for (path, bytes) in &bin_chunks {
-        let tree = match bin_provider.parse_bytes(bytes) {
-            Ok(t) => t,
+        match bin_provider.parse_bytes(bytes) {
+            Ok(tree) => {
+                for linked_path in &tree.linked {
+                    if !parsed_bins.contains_key(linked_path) {
+                        queue.push_back(linked_path.clone());
+                    }
+                }
+                parsed_bins.insert(path.clone(), tree);
+            }
             Err(e) => {
                 tracing::warn!("Failed to parse BIN {path}: {e}");
-                continue;
             }
+        }
+    }
+
+    // BFS: resolve linked dependencies that exist in the WAD
+    while let Some(linked_path) = queue.pop_front() {
+        if parsed_bins.contains_key(&linked_path) {
+            continue;
+        }
+        // Try to find this linked BIN in the extracted files
+        if let Some((_, bytes)) = all_files.iter().find(|(p, _)| *p == linked_path) {
+            match bin_provider.parse_bytes(bytes) {
+                Ok(tree) => {
+                    for dep in &tree.linked {
+                        if !parsed_bins.contains_key(dep) {
+                            queue.push_back(dep.clone());
+                        }
+                    }
+                    tracing::debug!("Resolved linked BIN: {}", linked_path);
+                    parsed_bins.insert(linked_path, tree);
+                }
+                Err(e) => {
+                    tracing::debug!("Failed to parse linked BIN {}: {}", linked_path, e);
+                }
+            }
+        } else {
+            tracing::debug!("Linked BIN not found in WAD: {}", linked_path);
+        }
+    }
+
+    // Separate primary BINs (from bin_chunks) from linked-only trees
+    let primary_bin_paths: std::collections::HashSet<String> =
+        bin_chunks.iter().map(|(p, _)| p.clone()).collect();
+    let linked_only: std::collections::HashMap<String, hematite_types::bin::BinTree> = parsed_bins
+        .iter()
+        .filter(|(k, _)| !primary_bin_paths.contains(*k))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    // === BIN-LEVEL PIPELINE ===
+
+    // Load shader validator once for all BIN files
+    let shader_validator = hematite_core::detect::shader::ShaderValidator::load()
+        .ok()
+        .filter(|v| v.is_available());
+
+    // Process primary BIN files
+    for (path, _) in &bin_chunks {
+        let Some(tree) = parsed_bins.remove(path) else {
+            continue; // Already warned during parse
         };
 
         let mut ctx = FixContext {
@@ -350,6 +439,8 @@ fn process_wad_file(
             champions,
             files_to_remove: Vec::new(),
             file_path: path.clone(),
+            linked_trees: linked_only.clone(),
+            shader_validator: shader_validator.as_ref(),
         };
 
         let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
@@ -384,6 +475,36 @@ fn process_wad_file(
 
     // Update total files removed count
     total_result.files_removed = shared_files_to_remove.len() as u32;
+
+    // In check mode, populate CheckInfo with skin detection
+    if check {
+        use hematite_core::detect::skin::SkinDetector;
+
+        let all_paths: Vec<String> = all_files.iter().map(|(p, _)| p.clone()).collect();
+        let detector = SkinDetector::new();
+        let skin_info = detector.detect_from_paths(&all_paths);
+
+        let detected: Vec<String> = total_result
+            .applied_fixes
+            .iter()
+            .map(|f| f.fix_name.clone())
+            .collect();
+
+        let skin_number = skin_info.primary_skin();
+        let is_binless = skin_info.is_binless;
+        let champion = if skin_info.champion.is_empty() {
+            None
+        } else {
+            Some(skin_info.champion)
+        };
+
+        total_result.check_info = Some(CheckInfo {
+            champion,
+            skin_number,
+            is_binless,
+            detected_issues: detected,
+        });
+    }
 
     // === WAD REBUILDING ===
     // Write modified WAD if any changes were made and not dry-run
@@ -450,6 +571,7 @@ fn process_fantome_file(
     champions: &CharacterRelations,
     dry_run: bool,
     hash_provider: &Arc<dyn HashProvider>,
+    check: bool,
 ) -> Result<ProcessResult> {
     tracing::info!("Processing Fantome: {}", file.display());
 
@@ -549,6 +671,7 @@ fn process_fantome_file(
             champions,
             dry_run,
             hash_provider,
+            check,
         )?;
         total_result.merge(result);
     }

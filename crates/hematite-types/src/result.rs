@@ -15,6 +15,17 @@ pub struct ProcessResult {
     pub errors: Vec<String>,
     pub applied_fixes: Vec<AppliedFix>,
     pub duration: Option<Duration>,
+    /// Check-mode info (populated when --check is used).
+    pub check_info: Option<CheckInfo>,
+}
+
+/// Information gathered in check mode (detection-only).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct CheckInfo {
+    pub champion: Option<String>,
+    pub skin_number: Option<u32>,
+    pub is_binless: bool,
+    pub detected_issues: Vec<String>,
 }
 
 impl ProcessResult {
@@ -26,6 +37,10 @@ impl ProcessResult {
         self.files_removed += other.files_removed;
         self.errors.extend(other.errors);
         self.applied_fixes.extend(other.applied_fixes);
+        // Merge check info (keep first non-None)
+        if self.check_info.is_none() {
+            self.check_info = other.check_info;
+        }
     }
 }
 

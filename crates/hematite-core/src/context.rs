@@ -4,9 +4,11 @@
 //! needs: the BIN tree being processed, hash lookups, WAD existence checks,
 //! and champion relationship data.
 
+use crate::detect::shader::ShaderValidator;
 use crate::traits::{HashProvider, WadProvider};
 use hematite_types::bin::BinTree;
 use hematite_types::champion::CharacterRelations;
+use std::collections::HashMap;
 
 /// Runtime state for a fix session on a single BIN file.
 ///
@@ -30,4 +32,10 @@ pub struct FixContext<'a> {
 
     /// Files marked for removal from the WAD (populated by RemoveFromWad transforms).
     pub files_to_remove: Vec<String>,
+
+    /// Linked BIN trees resolved via BFS (dependencies from BIN headers).
+    pub linked_trees: HashMap<String, BinTree>,
+
+    /// Shader validator for shader fallback fixes (optional).
+    pub shader_validator: Option<&'a ShaderValidator>,
 }

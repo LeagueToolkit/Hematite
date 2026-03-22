@@ -18,6 +18,8 @@ use indexmap::IndexMap;
 #[derive(Debug, Clone, Default)]
 pub struct BinTree {
     pub objects: IndexMap<u32, BinObject>,
+    /// Linked BIN dependencies (paths from the BIN header's `dependencies` list).
+    pub linked: Vec<String>,
 }
 
 /// A single object in a BIN tree.

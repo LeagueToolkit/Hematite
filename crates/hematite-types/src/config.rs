@@ -83,6 +83,20 @@ pub enum DetectionRule {
     /// VFX shape data needs migration (post-patch 14.1 format change).
     #[serde(rename = "vfx_shape_needs_fix")]
     VfxShapeNeedsFix { entry_type: String },
+
+    /// Shader references that don't exist in the valid shader list.
+    #[serde(rename = "invalid_shader_reference")]
+    InvalidShaderReference {
+        shader_def_type: String,
+        shader_link_field: String,
+    },
+
+    /// Entries of specific types not referenced by the main skin entry.
+    #[serde(rename = "unreferenced_entry_of_type")]
+    UnreferencedEntryOfType {
+        main_entry_type: String,
+        targets: Vec<EntryValidationTarget>,
+    },
 }
 
 /// How to fix a detected issue.
@@ -141,6 +155,20 @@ pub enum TransformAction {
     /// Complex VFX shape structure migration.
     #[serde(rename = "vfx_shape_fix")]
     VfxShapeFix,
+
+    /// Replace invalid shader references with closest valid match.
+    #[serde(rename = "shader_fallback")]
+    ShaderFallback {
+        shader_def_type: String,
+        shader_link_field: String,
+    },
+
+    /// Remove entries not referenced by the main skin entry.
+    #[serde(rename = "remove_unreferenced_entries")]
+    RemoveUnreferencedEntries {
+        main_entry_type: String,
+        targets: Vec<EntryValidationTarget>,
+    },
 }
 
 /// Parent embed to create when EnsureField target doesn't exist yet.
@@ -149,6 +177,20 @@ pub struct ParentEmbed {
     pub field: String,
     #[serde(rename = "type")]
     pub embed_type: String,
+}
+
+/// Target entry type for entry validation rules.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntryValidationTarget {
+    /// The entry type to validate (e.g. "ContextualActionData").
+    pub entry_type: String,
+    /// Optional hex type hash for direct matching (e.g. "0xCF3A2F44").
+    #[serde(default)]
+    pub type_hash: Option<String>,
+    /// Field name in the main entry that references this type.
+    pub reference_field: String,
+    /// Hash of the link field (hex string like "0xd8f64a0d").
+    pub link_field: String,
 }
 
 // ============================================================================

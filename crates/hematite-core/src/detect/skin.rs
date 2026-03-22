@@ -214,6 +214,38 @@ impl SkinDetector {
             ),
         ]
     }
+
+    /// Auto-detect champion and skin info from file paths (no champion name needed).
+    ///
+    /// Scans paths for `{champion}_skin{N}.bin` patterns to extract the champion name,
+    /// then runs full skin detection.
+    pub fn detect_from_paths(&self, paths: &[impl AsRef<str>]) -> SkinInfo {
+        let champion_pattern =
+            Regex::new(r"(?i)(?:data/)?([a-z]+)_skin\d").expect("BUG: hardcoded regex is invalid");
+
+        // Try to extract champion name from paths
+        let mut champion = std::string::String::new();
+        for path in paths {
+            if let Some(caps) = champion_pattern.captures(path.as_ref()) {
+                if let Some(name) = caps.get(1) {
+                    champion = name.as_str().to_lowercase();
+                    break;
+                }
+            }
+        }
+
+        if champion.is_empty() {
+            // Binless mod — no character BINs found
+            return SkinInfo {
+                champion: std::string::String::new(),
+                skin_numbers: Vec::new(),
+                is_binless: true,
+                bin_paths: paths.iter().map(|p| p.as_ref().to_string()).collect(),
+            };
+        }
+
+        self.detect_skins(paths, &champion)
+    }
 }
 
 impl Default for SkinDetector {

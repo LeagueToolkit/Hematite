@@ -13,13 +13,17 @@
 //! | [`regex_ops`] | `RegexReplace`, `RegexRenameField` | PropertyWalker (visit_string) |
 //! | [`vfx_shape`] | `VfxShapeFix` | ObjectFilter |
 //! | [`remove`] | `RemoveFromWad` | (trivial) |
+//! | [`shader_fallback`] | `ShaderFallback` | ShaderValidator token matching |
+//! | [`remove_unreferenced`] | `RemoveUnreferencedEntries` | Link collection + entry removal |
 
 pub mod change_type;
 pub mod ensure_field;
 pub mod regex_ops;
 pub mod remove;
+pub mod remove_unreferenced;
 pub mod rename_hash;
 pub mod replace_ext;
+pub mod shader_fallback;
 pub mod vfx_shape;
 
 use crate::context::FixContext;
@@ -80,5 +84,20 @@ pub fn apply_transform(
             };
             vfx_shape::apply(ctx, entry_type)
         }
+        TransformAction::ShaderFallback {
+            shader_def_type,
+            shader_link_field,
+        } => {
+            if let Some(validator) = ctx.shader_validator {
+                shader_fallback::apply(ctx, shader_def_type, shader_link_field, validator)
+            } else {
+                tracing::warn!("Shader fallback requested but no shader validator available");
+                0
+            }
+        }
+        TransformAction::RemoveUnreferencedEntries {
+            main_entry_type,
+            targets,
+        } => remove_unreferenced::apply(ctx, main_entry_type, targets),
     }
 }

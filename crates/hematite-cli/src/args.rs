@@ -57,6 +57,18 @@ pub struct Cli {
     #[arg(long, help = "Fix VFX shape format (14.1+ migration)")]
     pub vfx_shape: bool,
 
+    #[arg(long, help = "Remove .anm animation files from mod")]
+    pub remove_anm: bool,
+
+    #[arg(long, help = "Fix invalid shader references with closest match")]
+    pub fix_shaders: bool,
+
+    #[arg(
+        long,
+        help = "Remove unreferenced entries (CAD, AnimGraph, GearSkinUpgrade)"
+    )]
+    pub validate_entries: bool,
+
     #[arg(short, long, help = "Enable all fixes")]
     pub all: bool,
 
@@ -66,6 +78,12 @@ pub struct Cli {
 
     #[arg(long, help = "Show what would be fixed without modifying files")]
     pub dry_run: bool,
+
+    #[arg(
+        long,
+        help = "Check mode: detect issues and report skin info without fixing"
+    )]
+    pub check: bool,
 
     #[arg(
         long,
@@ -97,7 +115,10 @@ const ALL_FIX_IDS: &[&str] = &[
     "dds_to_tex",
     "champion_bin_remover",
     "bnk_remover",
+    "anm_remover",
     "vfx_shape_fix",
+    "shader_fallback",
+    "entry_validator",
 ];
 
 /// Collect selected fix IDs based on CLI flags.
@@ -127,6 +148,15 @@ pub fn collect_selected_fixes(cli: &Cli) -> Vec<String> {
     }
     if cli.vfx_shape {
         fixes.push("vfx_shape_fix".into());
+    }
+    if cli.remove_anm {
+        fixes.push("anm_remover".into());
+    }
+    if cli.fix_shaders {
+        fixes.push("shader_fallback".into());
+    }
+    if cli.validate_entries {
+        fixes.push("entry_validator".into());
     }
 
     // If --all or no specific flags: apply all fixes

@@ -57,6 +57,7 @@ mod tests {
         let provider = LtkBinProvider::new();
         let tree = BinTree {
             objects: IndexMap::new(),
+            linked: vec![],
         };
 
         let bytes = provider.write_bytes(&tree).unwrap();
@@ -94,7 +95,10 @@ mod tests {
         let mut objects = IndexMap::new();
         objects.insert(0x1234, obj);
 
-        let tree = BinTree { objects };
+        let tree = BinTree {
+            objects,
+            linked: vec![],
+        };
 
         let bytes = provider.write_bytes(&tree).unwrap();
         let parsed = provider.parse_bytes(&bytes).unwrap();
