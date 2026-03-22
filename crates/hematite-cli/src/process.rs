@@ -20,6 +20,12 @@ use walkdir::WalkDir;
 
 /// Load hash provider with LMDB fallback to TXT.
 fn load_hash_provider() -> Result<Arc<dyn HashProvider>> {
+    // Auto-download LMDB if missing (skip version check if already exists)
+    if let Err(e) = crate::hash_downloader::ensure_hashes_available(false) {
+        tracing::warn!("Failed to auto-download hash database: {}", e);
+        tracing::info!("Will attempt to use existing files");
+    }
+
     // Try LMDB first
     match LmdbHashProvider::load_from_appdata() {
         Ok(provider) => {

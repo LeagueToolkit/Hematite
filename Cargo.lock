@@ -770,6 +770,7 @@ dependencies = [
  "tracing-subscriber",
  "walkdir",
  "zip",
+ "zstd 0.13.3",
 ]
 
 [[package]]

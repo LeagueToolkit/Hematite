@@ -31,5 +31,8 @@ tempfile = "3.10"
 walkdir = "2"
 
 # Remote config fetching
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 const_format = "0.2"
+
+# Hash database decompression
+zstd = "0.13"

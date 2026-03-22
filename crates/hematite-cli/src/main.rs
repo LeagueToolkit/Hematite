@@ -11,6 +11,7 @@
 //! ```
 
 mod args;
+mod hash_downloader;
 mod logging;
 mod process;
 mod remote;
