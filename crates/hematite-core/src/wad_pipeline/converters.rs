@@ -54,12 +54,27 @@ impl Default for ConverterRegistry {
 
 /// Convert DDS texture to TEX format.
 ///
-/// DDS and TEX are essentially the same format for League, so this is a no-op
-/// converter that just returns the input unchanged. The real fix is the extension
-/// change in the file path.
+/// **NOTE**: This is a placeholder. The actual conversion requires:
+/// 1. Parsing DDS file (Microsoft DirectDraw Surface format)
+/// 2. Converting to TEX (League's proprietary format with "TEX\0" magic)
+/// 3. Preserving texture data, mipmaps, and compression format
+///
+/// For proper implementation, we need to integrate LTK's texture conversion:
+/// - Use `ltk_texture::Dds::from_reader()` to parse DDS
+/// - Extract RGBA data or compressed blocks
+/// - Encode as `ltk_texture::Tex` with proper header
+/// - Use `Tex::encode_rgba_image()` or direct header construction
+///
+/// **Current behavior**: Returns input unchanged (NO CONVERSION)
+/// This means the file will still have DDS format but TEX extension.
 fn dds_to_tex(input: &[u8]) -> Result<Vec<u8>> {
-    // DDS and TEX have identical binary format in League
-    // The fix is purely the file extension change
+    // TODO: Implement actual DDS→TEX conversion using ltk_texture crate
+    // This requires:
+    // - Adding ltk_texture dependency to hematite-core (violates NO LTK rule)
+    // - OR moving converter implementation to hematite-ltk
+    // - OR implementing manual TEX header construction
+
+    tracing::warn!("DDS→TEX conversion not implemented, file will retain DDS format");
     Ok(input.to_vec())
 }
 

@@ -5,3 +5,4 @@ pub mod hash_adapter;
 pub mod lmdb_hash_adapter;
 pub mod wad_adapter;
 pub mod convert;
+pub mod texture_converter;
