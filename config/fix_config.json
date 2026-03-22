@@ -158,6 +158,38 @@
             "apply": {
                 "type": "remove_file"
             }
+        },
+        "dds_texture_converter": {
+            "name": "DDS → TEX Texture Conversion",
+            "description": "Converts DDS textures to League's TEX format (fixes broken textures in newer patches)",
+            "enabled": true,
+            "severity": "medium",
+            "detect": {
+                "type": "file_extension",
+                "extension": ".dds"
+            },
+            "apply": {
+                "type": "convert_format",
+                "from_ext": "dds",
+                "to_ext": "tex",
+                "converter": "dds_to_tex"
+            }
+        },
+        "sco_mesh_converter": {
+            "name": "SCO → SCB Mesh Conversion",
+            "description": "Converts ASCII SCO meshes to binary SCB format (required by newer League versions)",
+            "enabled": true,
+            "severity": "high",
+            "detect": {
+                "type": "file_extension",
+                "extension": ".sco"
+            },
+            "apply": {
+                "type": "convert_format",
+                "from_ext": "sco",
+                "to_ext": "scb",
+                "converter": "sco_to_scb"
+            }
         }
     }
 }

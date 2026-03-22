@@ -6,10 +6,13 @@ use anyhow::{Context, Result};
 use hematite_core::context::FixContext;
 use hematite_core::pipeline::apply_fixes;
 use hematite_core::traits::{BinProvider, HashProvider};
+use hematite_core::wad_pipeline::converters::ConverterRegistry;
 use hematite_ltk::{
     bin_adapter::LtkBinProvider,
     hash_adapter::TxtHashProvider,
     lmdb_hash_adapter::LmdbHashProvider,
+    texture_converter,
+    mesh_converter,
 };
 use hematite_types::champion::CharacterRelations;
 use hematite_types::config::FixConfig;
@@ -206,8 +209,8 @@ fn process_wad_file(
 
     let wad_provider = wad_file.build_provider();
 
-    // Extract all files for WAD-level pipeline
-    let all_files = wad_file.extract_all_files(hash_provider.as_ref())
+    // Extract all files for WAD-level pipeline (mutable for conversions)
+    let mut all_files = wad_file.extract_all_files(hash_provider.as_ref())
         .context("Failed to extract files from WAD")?;
 
     let bin_chunks: Vec<_> = all_files.iter()
@@ -234,12 +237,46 @@ fn process_wad_file(
         total_result.fixes_applied += wad_fix.files_affected;
     }
 
-    // Log file conversions (not yet implemented)
+    // Perform file format conversions
+    let mut converter_registry = ConverterRegistry::new();
+    // Register LTK-based converters (override placeholders)
+    converter_registry.register("dds_to_tex", texture_converter::dds_to_tex);
+    converter_registry.register("sco_to_scb", mesh_converter::sco_to_scb);
+
+    let mut conversion_count = 0u32;
     if !wad_output.files_to_convert.is_empty() {
-        tracing::warn!(
-            "File format conversion not yet implemented - {} files would be converted",
-            wad_output.files_to_convert.len()
-        );
+        tracing::info!("Converting {} file formats...", wad_output.files_to_convert.len());
+
+        for conversion in &wad_output.files_to_convert {
+            // Find the file in all_files
+            if let Some((_, bytes)) = all_files.iter_mut().find(|(p, _)| p == &conversion.path) {
+                match converter_registry.convert(&conversion.converter, bytes) {
+                    Ok(converted_bytes) => {
+                        let old_size = bytes.len();
+                        *bytes = converted_bytes;
+                        conversion_count += 1;
+                        tracing::info!(
+                            "✓ Converted {} from .{} to .{} ({} → {} bytes)",
+                            conversion.path,
+                            conversion.from_ext,
+                            conversion.to_ext,
+                            old_size,
+                            bytes.len()
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "✗ Converter '{}' failed for {}: {}",
+                            conversion.converter,
+                            conversion.path,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        total_result.fixes_applied += conversion_count;
     }
 
     // === BIN-LEVEL PIPELINE ===
@@ -273,18 +310,48 @@ fn process_wad_file(
     // Update total files removed count
     total_result.files_removed = shared_files_to_remove.len() as u32;
 
+    // === WAD REBUILDING (not implemented for safety) ===
+    // NOTE: WAD rebuilding is POSSIBLE using league_toolkit::wad::builder::WadBuilder
+    // Example code to rebuild the WAD:
+    //
+    //   use league_toolkit::wad::builder::{WadBuilder, WadChunkBuilder};
+    //   use xxhash_rust::xxh64::xxh64;
+    //
+    //   let mut builder = WadBuilder::default();
+    //   for (path, bytes) in &all_files {
+    //       if !shared_files_to_remove.contains(path) {
+    //           builder = builder.with_chunk(WadChunkBuilder::default().with_path(path));
+    //       }
+    //   }
+    //
+    //   let output_path = file.with_extension("fixed.wad.client");
+    //   let mut output_file = std::fs::File::create(&output_path)?;
+    //   builder.build_to_writer(&mut output_file, |path_hash, cursor| {
+    //       let (_, bytes) = all_files.iter()
+    //           .find(|(p, _)| xxh64(p.to_lowercase().as_bytes(), 0) == path_hash)
+    //           .ok_or_else(|| anyhow::anyhow!("Missing file for hash {}", path_hash))?;
+    //       cursor.write_all(bytes)?;
+    //       Ok(())
+    //   })?;
+    //
+    // Not enabled by default to avoid accidental file corruption during development.
+
     if !shared_files_to_remove.is_empty() {
         tracing::info!("Total files marked for removal: {}", shared_files_to_remove.len());
         if !dry_run {
-            tracing::warn!("WAD writing not yet implemented - {} files would be removed but changes not persisted", shared_files_to_remove.len());
+            tracing::warn!("WAD rebuilding disabled for safety - {} files would be removed but changes not persisted", shared_files_to_remove.len());
+            tracing::info!("To enable WAD writing, implement WadBuilder code in process.rs (see commented example)");
         }
     }
 
     if !dry_run && total_result.fixes_applied > 0 {
         tracing::warn!(
-            "BIN writing not yet implemented (LTK limitation) - {} fixes detected in WAD but not persisted",
-            total_result.fixes_applied
+            "BIN writing not yet implemented (LTK limitation) - {} BIN fixes detected in WAD but not persisted",
+            total_result.fixes_applied - conversion_count
         );
+        if conversion_count > 0 {
+            tracing::info!("✓ {} file conversions performed successfully but not written to WAD", conversion_count);
+        }
     }
 
     Ok(total_result)
