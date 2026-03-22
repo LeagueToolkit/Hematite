@@ -5,13 +5,38 @@
 use anyhow::{Context, Result};
 use hematite_core::context::FixContext;
 use hematite_core::pipeline::apply_fixes;
-use hematite_core::traits::BinProvider;
-use hematite_ltk::{bin_adapter::LtkBinProvider, hash_adapter::TxtHashProvider};
+use hematite_core::traits::{BinProvider, HashProvider};
+use hematite_ltk::{
+    bin_adapter::LtkBinProvider,
+    hash_adapter::TxtHashProvider,
+    lmdb_hash_adapter::LmdbHashProvider,
+};
 use hematite_types::champion::CharacterRelations;
 use hematite_types::config::FixConfig;
 use hematite_types::result::ProcessResult;
 use std::path::Path;
+use std::sync::Arc;
 use walkdir::WalkDir;
+
+/// Load hash provider with LMDB fallback to TXT.
+fn load_hash_provider() -> Result<Arc<dyn HashProvider>> {
+    // Try LMDB first
+    match LmdbHashProvider::load_from_appdata() {
+        Ok(provider) => {
+            tracing::info!("Using LMDB hash provider");
+            return Ok(Arc::new(provider));
+        }
+        Err(e) => {
+            tracing::warn!("LMDB hash provider unavailable: {}", e);
+            tracing::info!("Falling back to TXT hash provider");
+        }
+    }
+
+    // Fallback to TXT
+    let txt_provider = TxtHashProvider::load_from_appdata()
+        .context("Failed to load hash dictionaries (both LMDB and TXT failed)")?;
+    Ok(Arc::new(txt_provider))
+}
 
 /// Process input (file or directory).
 pub fn process_input(
@@ -21,6 +46,9 @@ pub fn process_input(
     champions: &CharacterRelations,
     dry_run: bool,
 ) -> Result<ProcessResult> {
+    // Load hash provider once for all files
+    let hash_provider = load_hash_provider()?;
+
     let mut total_result = ProcessResult::default();
 
     if input.is_dir() {
@@ -29,12 +57,26 @@ pub fn process_input(
             let path = entry.path();
 
             if path.is_file() && is_supported_file(path) {
-                let result = process_file(path, config, selected_fixes, champions, dry_run)?;
+                let result = process_file_with_hashes(
+                    path,
+                    config,
+                    selected_fixes,
+                    champions,
+                    dry_run,
+                    &hash_provider,
+                )?;
                 total_result.merge(result);
             }
         }
     } else {
-        total_result = process_file(input, config, selected_fixes, champions, dry_run)?;
+        total_result = process_file_with_hashes(
+            input,
+            config,
+            selected_fixes,
+            champions,
+            dry_run,
+            &hash_provider,
+        )?;
     }
 
     Ok(total_result)
@@ -55,13 +97,14 @@ fn is_supported_file(path: &Path) -> bool {
     ext == "bin" || ext == "fantome" || ext == "zip" || file_name.ends_with(".wad.client")
 }
 
-/// Process a single file based on its type.
-fn process_file(
+/// Process a single file based on its type (with hash provider).
+fn process_file_with_hashes(
     file: &Path,
     config: &FixConfig,
     selected_fixes: &[String],
     champions: &CharacterRelations,
     dry_run: bool,
+    hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
     let ext = file.extension()
         .and_then(|e| e.to_str())
@@ -74,11 +117,11 @@ fn process_file(
         .unwrap_or_default();
 
     if ext == "bin" {
-        process_bin_file(file, config, selected_fixes, champions, dry_run)
+        process_bin_file(file, config, selected_fixes, champions, dry_run, hash_provider)
     } else if file_name.ends_with(".wad.client") {
-        process_wad_file(file, config, selected_fixes, champions, dry_run)
+        process_wad_file(file, config, selected_fixes, champions, dry_run, hash_provider)
     } else if ext == "fantome" || ext == "zip" {
-        process_fantome_file(file, config, selected_fixes, champions, dry_run)
+        process_fantome_file(file, config, selected_fixes, champions, dry_run, hash_provider)
     } else {
         anyhow::bail!("Unsupported file type: {}", file.display());
     }
@@ -91,12 +134,11 @@ fn process_bin_file(
     selected_fixes: &[String],
     champions: &CharacterRelations,
     dry_run: bool,
+    hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
     tracing::info!("Processing BIN: {}", file.display());
 
-    // Initialize providers
-    let hash_provider = TxtHashProvider::load_from_appdata()
-        .context("Failed to load hash dictionaries")?;
+    // Initialize BIN provider
     let bin_provider = LtkBinProvider;
 
     // Read BIN file
@@ -116,7 +158,7 @@ fn process_bin_file(
     // Create fix context
     let mut ctx = FixContext {
         tree,
-        hashes: &hash_provider,
+        hashes: hash_provider.as_ref(),
         wad: &null_wad,
         champions,
         files_to_remove: Vec::new(),
@@ -144,21 +186,20 @@ fn process_wad_file(
     selected_fixes: &[String],
     champions: &CharacterRelations,
     dry_run: bool,
+    hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
     use hematite_ltk::wad_adapter::WadFile;
     use hematite_core::detect::bnk::parse_bnk_version;
 
     tracing::info!("Processing WAD: {}", file.display());
 
-    let hash_provider = TxtHashProvider::load_from_appdata()
-        .context("Failed to load hash dictionaries")?;
     let bin_provider = LtkBinProvider;
 
     let mut wad_file = WadFile::open(file)
         .context("Failed to open WAD file")?;
 
     let wad_provider = wad_file.build_provider();
-    let bin_chunks = wad_file.extract_bin_files(&hash_provider)
+    let bin_chunks = wad_file.extract_bin_files(hash_provider.as_ref())
         .context("Failed to extract BIN files from WAD")?;
 
     tracing::info!("WAD has {} total entries, {} BIN files", wad_provider.hash_count(), bin_chunks.len());
@@ -183,7 +224,7 @@ fn process_wad_file(
 
         tracing::debug!("BNK minimum version: {}", min_version);
 
-        let bnk_chunks = wad_file.extract_bnk_files(&hash_provider)
+        let bnk_chunks = wad_file.extract_bnk_files(hash_provider.as_ref())
             .context("Failed to extract BNK files from WAD")?;
 
         if !bnk_chunks.is_empty() {
@@ -215,7 +256,7 @@ fn process_wad_file(
 
         let mut ctx = FixContext {
             tree,
-            hashes: &hash_provider,
+            hashes: hash_provider.as_ref(),
             wad: &wad_provider,
             champions,
             files_to_remove: Vec::new(),
@@ -258,6 +299,7 @@ fn process_fantome_file(
     selected_fixes: &[String],
     champions: &CharacterRelations,
     dry_run: bool,
+    hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
     tracing::info!("Processing Fantome: {}", file.display());
 
@@ -296,7 +338,7 @@ fn process_fantome_file(
 
     let mut total_result = ProcessResult::default();
     for wad_path in &wad_paths {
-        let result = process_wad_file(wad_path, config, selected_fixes, champions, dry_run)?;
+        let result = process_wad_file(wad_path, config, selected_fixes, champions, dry_run, hash_provider)?;
         total_result.merge(result);
     }
 
