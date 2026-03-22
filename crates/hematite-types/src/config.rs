@@ -31,7 +31,11 @@ use serde::{Deserialize, Serialize};
 pub struct FixConfig {
     pub version: String,
     pub last_updated: String,
+    /// BIN-level fixes (operate on parsed BIN trees)
     pub fixes: HashMap<String, FixRule>,
+    /// WAD-level fixes (operate on files before BIN parsing)
+    #[serde(default)]
+    pub wad_fixes: HashMap<String, WadFixRule>,
 }
 
 /// A single fix rule.
@@ -176,6 +180,108 @@ pub struct ParentEmbed {
     pub field: String,
     #[serde(rename = "type")]
     pub embed_type: String,
+}
+
+// ============================================================================
+// WAD-LEVEL FIXES (File operations before BIN parsing)
+// ============================================================================
+
+/// A WAD-level fix rule for file operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WadFixRule {
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+    pub severity: String,
+    pub detect: WadDetectionRule,
+    pub apply: WadTransformAction,
+}
+
+/// How to detect issues at the WAD file level.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum WadDetectionRule {
+    /// Match files by extension and optionally check binary headers.
+    #[serde(rename = "file_extension")]
+    FileExtension {
+        extension: String,
+        #[serde(default)]
+        binary_check: Option<BinaryHeaderCheck>,
+    },
+
+    /// Match files by path pattern (glob-style).
+    #[serde(rename = "file_pattern")]
+    FilePattern {
+        pattern: String,
+        #[serde(default)]
+        binary_check: Option<BinaryHeaderCheck>,
+    },
+}
+
+/// Binary header validation for file format checks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum BinaryHeaderCheck {
+    /// Check version number at specific offset.
+    #[serde(rename = "version_at_offset")]
+    VersionAtOffset {
+        /// Byte offset in file
+        offset: usize,
+        /// Size in bytes (1, 2, or 4)
+        size: usize,
+        /// Byte order
+        #[serde(default = "default_endian")]
+        endian: Endian,
+        /// List of allowed versions
+        allowed_versions: Vec<u32>,
+    },
+
+    /// Check magic signature at start of file.
+    #[serde(rename = "magic_signature")]
+    MagicSignature {
+        /// Expected bytes at start of file
+        signature: Vec<u8>,
+    },
+}
+
+fn default_endian() -> Endian {
+    Endian::Little
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Endian {
+    Little,
+    Big,
+}
+
+/// How to transform files at the WAD level.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum WadTransformAction {
+    /// Remove the file from WAD.
+    #[serde(rename = "remove_file")]
+    RemoveFile,
+
+    /// Convert file format (e.g. DDS→TEX, SCO→SCB).
+    #[serde(rename = "convert_format")]
+    ConvertFormat {
+        /// Source extension
+        from_ext: String,
+        /// Target extension
+        to_ext: String,
+        /// Converter name (must be registered in converter registry)
+        converter: String,
+    },
+
+    /// Rename file (change path/extension).
+    #[serde(rename = "rename_file")]
+    RenameFile {
+        /// Regex pattern to match
+        pattern: String,
+        /// Replacement string (supports $1, $2 capture groups)
+        replacement: String,
+    },
 }
 
 /// All BIN data types for value creation.

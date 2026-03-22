@@ -184,8 +184,8 @@ fn process_bin_file(
 
 /// Process a .wad.client file.
 ///
-/// Extracts BIN files from the WAD, runs the fix pipeline on each,
-/// and reports results. Writing modified BINs back is not yet supported.
+/// Extracts files from the WAD, runs WAD-level and BIN-level fix pipelines,
+/// and reports results. Writing modified files back is not yet supported.
 fn process_wad_file(
     file: &Path,
     config: &FixConfig,
@@ -195,7 +195,7 @@ fn process_wad_file(
     hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
     use hematite_ltk::wad_adapter::WadFile;
-    use hematite_core::detect::bnk::parse_bnk_version;
+    use hematite_core::wad_pipeline;
 
     tracing::info!("Processing WAD: {}", file.display());
 
@@ -205,50 +205,44 @@ fn process_wad_file(
         .context("Failed to open WAD file")?;
 
     let wad_provider = wad_file.build_provider();
-    let bin_chunks = wad_file.extract_bin_files(hash_provider.as_ref())
-        .context("Failed to extract BIN files from WAD")?;
+
+    // Extract all files for WAD-level pipeline
+    let all_files = wad_file.extract_all_files(hash_provider.as_ref())
+        .context("Failed to extract files from WAD")?;
+
+    let bin_chunks: Vec<_> = all_files.iter()
+        .filter(|(path, _)| path.to_lowercase().ends_with(".bin"))
+        .cloned()
+        .collect();
 
     tracing::info!("WAD has {} total entries, {} BIN files", wad_provider.hash_count(), bin_chunks.len());
 
     let mut total_result = ProcessResult::default();
     let mut shared_files_to_remove = Vec::new();
 
-    // Check if bnk_remover fix is selected
-    if selected_fixes.contains(&"bnk_remover".to_string()) {
-        tracing::debug!("BNK remover fix is enabled, checking for BNK files...");
+    // === WAD-LEVEL PIPELINE ===
+    // Run file-level fixes (BNK removal, format conversions, etc.)
+    tracing::debug!("Running WAD-level pipeline...");
+    let wad_output = wad_pipeline::apply_wad_fixes(&all_files, config, selected_fixes)?;
 
-        // Get min_version from config (use max of allowed_versions)
-        let min_version = config.fixes.get("bnk_remover")
-            .and_then(|fix| {
-                if let hematite_types::config::DetectionRule::BnkVersionNotIn { allowed_versions } = &fix.detect {
-                    allowed_versions.iter().max().copied()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(145); // Fallback to 145 if not found
+    // Collect files to remove from WAD-level fixes
+    shared_files_to_remove.extend(wad_output.files_to_remove.clone());
 
-        tracing::debug!("BNK minimum version: {}", min_version);
-
-        let bnk_chunks = wad_file.extract_bnk_files(hash_provider.as_ref())
-            .context("Failed to extract BNK files from WAD")?;
-
-        if !bnk_chunks.is_empty() {
-            tracing::info!("Found {} BNK files in WAD", bnk_chunks.len());
-
-            for (path, bytes) in &bnk_chunks {
-                let info = parse_bnk_version(bytes, min_version);
-
-                if info.should_remove {
-                    tracing::info!("Marking BNK for removal: {} - {}", path, info.reason);
-                    shared_files_to_remove.push(path.clone());
-                    total_result.fixes_applied += 1;
-                } else {
-                    tracing::debug!("Keeping BNK: {} - {}", path, info.reason);
-                }
-            }
-        }
+    // Track WAD-level fixes applied
+    for wad_fix in &wad_output.applied_fixes {
+        tracing::info!("WAD-level fix '{}' affected {} files", wad_fix.fix_name, wad_fix.files_affected);
+        total_result.fixes_applied += wad_fix.files_affected;
     }
+
+    // Log file conversions (not yet implemented)
+    if !wad_output.files_to_convert.is_empty() {
+        tracing::warn!(
+            "File format conversion not yet implemented - {} files would be converted",
+            wad_output.files_to_convert.len()
+        );
+    }
+
+    // === BIN-LEVEL PIPELINE ===
 
     // Process BIN files
     for (path, bytes) in &bin_chunks {

@@ -25,6 +25,7 @@
 pub mod traits;
 pub mod context;
 pub mod pipeline;
+pub mod wad_pipeline;
 pub mod walk;
 pub mod filter;
 pub mod factory;
