@@ -22,5 +22,8 @@ glam = "0.27"
 # Hashing (for WAD path hashing)
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 
+# LMDB database (for hash lookups)
+heed = "0.20"
+
 # Logging
 tracing = "0.1"
