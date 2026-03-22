@@ -5,6 +5,7 @@
 
 pub mod bnk;
 pub mod rules;
+pub mod shader;
 pub mod skin;
 
 pub use rules::detect_issue;
