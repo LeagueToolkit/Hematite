@@ -20,6 +20,9 @@ league-toolkit = { git = "https://github.com/LeagueToolkit/league-toolkit", rev 
 # This enables DDS→TEX conversion with compression support
 ltk_texture = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "ca8eff4", features = ["intel-tex"] }
 
+# Primitive types for Color, etc.
+ltk_primitives = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "ca8eff4" }
+
 # Math types (must match LTK's glam version: 0.27)
 glam = "0.27"
 

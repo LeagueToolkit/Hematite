@@ -19,6 +19,12 @@ pub struct ChampionList {
     pub champions: Vec<String>,
     pub subchamps: HashMap<String, Vec<String>>,
     pub healthbar_values: HashMap<String, u8>,
+    /// Characters that should be skipped during processing (crashes/breaks skins)
+    #[serde(default)]
+    pub blacklist: Vec<String>,
+    /// Special blacklists for specific champions (e.g., Lux elementals)
+    #[serde(default)]
+    pub special_blacklists: HashMap<String, Vec<String>>,
 }
 
 /// Pre-computed character relationship lookups.
@@ -33,6 +39,10 @@ pub struct CharacterRelations {
     pub subchamp_to_champion: HashMap<String, String>,
     /// entity name (lowercase) → healthbar value
     pub healthbar_values: HashMap<String, u8>,
+    /// Global character blacklist (e.g., viegowraith)
+    pub blacklist: Vec<String>,
+    /// Special blacklists per champion (e.g., lux → elementals)
+    pub special_blacklists: HashMap<String, Vec<String>>,
 }
 
 impl CharacterRelations {
@@ -58,6 +68,18 @@ impl CharacterRelations {
             relations.healthbar_values.insert(name.to_lowercase(), *value);
         }
 
+        // Normalize blacklists to lowercase
+        relations.blacklist = list.blacklist.iter()
+            .map(|s| s.to_lowercase())
+            .collect();
+
+        for (champion, blacklist) in &list.special_blacklists {
+            relations.special_blacklists.insert(
+                champion.to_lowercase(),
+                blacklist.iter().map(|s| s.to_lowercase()).collect(),
+            );
+        }
+
         relations
     }
 
@@ -73,5 +95,34 @@ impl CharacterRelations {
         self.subchamp_to_champion
             .get(&subchamp.to_lowercase())
             .map(|s| s.as_str())
+    }
+
+    /// Check if a character is globally blacklisted (case-insensitive).
+    pub fn is_blacklisted(&self, character: &str) -> bool {
+        let char_lower = character.to_lowercase();
+        self.blacklist.contains(&char_lower)
+    }
+
+    /// Check if a character is in a champion's special blacklist (case-insensitive).
+    pub fn is_in_special_blacklist(&self, champion: &str, character: &str) -> bool {
+        let champ_lower = champion.to_lowercase();
+        let char_lower = character.to_lowercase();
+        self.special_blacklists
+            .get(&champ_lower)
+            .map(|list| list.contains(&char_lower))
+            .unwrap_or(false)
+    }
+
+    /// Check if a character should be skipped (either global or special blacklist).
+    pub fn should_skip_character(&self, champion: Option<&str>, character: &str) -> bool {
+        if self.is_blacklisted(character) {
+            return true;
+        }
+        if let Some(champ) = champion {
+            if self.is_in_special_blacklist(champ, character) {
+                return true;
+            }
+        }
+        false
     }
 }

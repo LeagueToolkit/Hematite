@@ -67,6 +67,12 @@ pub struct Cli {
     #[arg(long, help = "Show what would be fixed without modifying files")]
     pub dry_run: bool,
 
+    #[arg(long, help = "Small mod optimization: only validate paths, don't add fallback assets")]
+    pub small_mod: bool,
+
+    #[arg(long, help = "Process all skins found in mod (not just primary skin)")]
+    pub all_skins: bool,
+
     #[arg(short = 'v', long, default_value = "normal", help = "Verbosity level")]
     pub verbosity: Verbosity,
 }

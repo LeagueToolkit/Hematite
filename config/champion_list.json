@@ -554,5 +554,21 @@
         "petchibisona": 21,
         "petstyletwowarwick": 21,
         "petporofluft": 21
+    },
+    "blacklist": [
+        "viegowraith"
+    ],
+    "special_blacklists": {
+        "lux": [
+            "luxair",
+            "luxdark",
+            "luxfire",
+            "luxice",
+            "luxmagma",
+            "luxmystic",
+            "luxnature",
+            "luxstorm",
+            "luxwater"
+        ]
     }
 }

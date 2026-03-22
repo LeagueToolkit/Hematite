@@ -8,8 +8,8 @@ use hematite_types::config::{BinaryHeaderCheck, Endian, WadDetectionRule};
 /// Check if a file matches a WAD detection rule.
 pub fn check_file(path: &str, bytes: &[u8], rule: &WadDetectionRule) -> Result<bool> {
     match rule {
-        WadDetectionRule::FileExtension { extension, binary_check } => {
-            check_extension(path, extension, bytes, binary_check.as_ref())
+        WadDetectionRule::FileExtension { extension, binary_check, exclude_files } => {
+            check_extension(path, extension, bytes, binary_check.as_ref(), exclude_files)
         }
         WadDetectionRule::FilePattern { pattern, binary_check } => {
             check_pattern(path, pattern, bytes, binary_check.as_ref())
@@ -22,11 +22,19 @@ fn check_extension(
     extension: &str,
     bytes: &[u8],
     binary_check: Option<&BinaryHeaderCheck>,
+    exclude_files: &[String],
 ) -> Result<bool> {
     let path_lower = path.to_lowercase();
 
     if !path_lower.ends_with(extension) {
         return Ok(false);
+    }
+
+    // Check if filename is in exclusion list (e.g., sfx_events.bnk)
+    if let Some(filename) = path_lower.split('/').next_back() {
+        if exclude_files.iter().any(|excluded| excluded.to_lowercase() == filename) {
+            return Ok(false);
+        }
     }
 
     if let Some(check) = binary_check {

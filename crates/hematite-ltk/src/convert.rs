@@ -1,4 +1,4 @@
-//! LTK ↔ Hematite type conversion (read-only for now).
+//! LTK ↔ Hematite type conversion.
 //!
 //! When LTK changes its API, only this file needs updating.
 
@@ -10,8 +10,9 @@ use league_toolkit::meta::{
     Bin as LtkBin,
     BinObject as LtkBinObject,
     PropertyValueEnum as LtkValue,
+    BinProperty as LtkBinProperty,
 };
-use league_toolkit::meta::property::values::*;
+use league_toolkit::meta::property::{values::*, NoMeta};
 
 /// Convert LTK Bin to Hematite BinTree (after parsing).
 pub fn ltk_tree_to_hematite(ltk_tree: LtkBin) -> Result<BinTree> {
@@ -26,11 +27,15 @@ pub fn ltk_tree_to_hematite(ltk_tree: LtkBin) -> Result<BinTree> {
 }
 
 /// Convert Hematite BinTree to LTK Bin (before writing).
-///
-/// **NOT IMPLEMENTED**: LTK 0.2/0.4 types have private `meta` fields preventing
-/// direct construction. Writing is blocked until LTK provides builder APIs.
-pub fn hematite_tree_to_ltk(_tree: &BinTree) -> Result<LtkBin> {
-    bail!("BIN writing not yet implemented (LTK has private fields)")
+pub fn hematite_tree_to_ltk(tree: &BinTree) -> Result<LtkBin> {
+    let mut objects = Vec::new();
+
+    for obj in tree.objects.values() {
+        objects.push(hematite_object_to_ltk(obj)?);
+    }
+
+    // No dependencies in hematite-v2 BinTree, so empty vec
+    Ok(LtkBin::new(objects, Vec::<std::string::String>::new()))
 }
 
 /// Convert single LTK BinObject to Hematite BinObject.
@@ -53,11 +58,22 @@ fn ltk_object_to_hematite(ltk_obj: LtkBinObject) -> Result<BinObject> {
 }
 
 /// Convert single Hematite BinObject to LTK BinObject.
-///
-/// **NOT IMPLEMENTED**: LTK types have private fields.
-#[allow(dead_code)]
-fn hematite_object_to_ltk(_obj: &BinObject) -> Result<LtkBinObject> {
-    bail!("BIN object writing not yet implemented")
+fn hematite_object_to_ltk(obj: &BinObject) -> Result<LtkBinObject> {
+    let mut properties = IndexMap::new();
+
+    for (name_hash, prop) in &obj.properties {
+        let ltk_prop = LtkBinProperty {
+            name_hash: *name_hash,
+            value: hematite_value_to_ltk(&prop.value)?,
+        };
+        properties.insert(*name_hash, ltk_prop);
+    }
+
+    Ok(LtkBinObject {
+        path_hash: obj.path_hash.0,
+        class_hash: obj.class_hash.0,
+        properties,
+    })
 }
 
 /// Convert LTK PropertyValueEnum to Hematite PropertyValue.
@@ -129,11 +145,76 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
 }
 
 /// Convert Hematite PropertyValue to LTK PropertyValueEnum.
-///
-/// **NOT IMPLEMENTED**: LTK types have private fields.
-#[allow(dead_code)]
-pub fn hematite_value_to_ltk(_val: &PropertyValue) -> Result<LtkValue> {
-    bail!("BIN value writing not yet implemented")
+pub fn hematite_value_to_ltk(val: &PropertyValue) -> Result<LtkValue> {
+    let ltk_val = match val {
+        // Primitives - use ::new() constructors
+        PropertyValue::Bool(v) => LtkValue::Bool(Bool::new(*v)),
+        PropertyValue::I8(v) => LtkValue::I8(I8::new(*v)),
+        PropertyValue::U8(v) => LtkValue::U8(U8::new(*v)),
+        PropertyValue::I16(v) => LtkValue::I16(I16::new(*v)),
+        PropertyValue::U16(v) => LtkValue::U16(U16::new(*v)),
+        PropertyValue::I32(v) => LtkValue::I32(I32::new(*v)),
+        PropertyValue::U32(v) => LtkValue::U32(U32::new(*v)),
+        PropertyValue::I64(v) => LtkValue::I64(I64::new(*v)),
+        PropertyValue::U64(v) => LtkValue::U64(U64::new(*v)),
+        PropertyValue::F32(v) => LtkValue::F32(F32::new(*v)),
+
+        // Vectors - convert arrays to glam types
+        PropertyValue::Vector2(v) => LtkValue::Vector2(Vector2::new((*v).into())),
+        PropertyValue::Vector3(v) => LtkValue::Vector3(Vector3::new((*v).into())),
+        PropertyValue::Vector4(v) => LtkValue::Vector4(Vector4::new((*v).into())),
+
+        // Matrix - convert 2D array to glam Mat4
+        PropertyValue::Matrix4x4(v) => LtkValue::Matrix44(Matrix44::new(glam::Mat4::from_cols_array_2d(v))),
+
+        // Strings & hashes
+        PropertyValue::String(v) => LtkValue::String(String::new(v.clone())),
+        PropertyValue::Hash(v) => LtkValue::Hash(Hash::new(*v)),
+        PropertyValue::Link(v) => LtkValue::ObjectLink(ObjectLink::new(*v)),
+        PropertyValue::WadHash(v) => LtkValue::WadChunkLink(WadChunkLink::new(*v)),
+        PropertyValue::Color(rgba) => LtkValue::Color(Color::new(ltk_primitives::Color {
+            r: rgba[0],
+            g: rgba[1],
+            b: rgba[2],
+            a: rgba[3],
+        })),
+        PropertyValue::BitBool(v) => LtkValue::BitBool(BitBool::new(*v != 0)),
+
+        // Nested structures
+        PropertyValue::Struct(s) => LtkValue::Struct(hematite_struct_to_ltk(s)?),
+        PropertyValue::Embedded(s) => LtkValue::Embedded(Embedded(hematite_struct_to_ltk(s)?)),
+
+        // Collections
+        PropertyValue::Container(items) => vec_to_ltk_container(items)?,
+        PropertyValue::UnorderedContainer(items) => {
+            LtkValue::UnorderedContainer(UnorderedContainer(match vec_to_ltk_container(items)? {
+                LtkValue::Container(c) => c,
+                _ => unreachable!("vec_to_ltk_container always returns Container"),
+            }))
+        }
+
+        // Optional
+        PropertyValue::Optional(opt) => option_to_ltk_optional(opt.as_ref())?,
+
+        // Map
+        PropertyValue::Map(pairs) => {
+            if pairs.is_empty() {
+                // Empty map - default to U32->U32
+                LtkValue::Map(Map::empty(league_toolkit::meta::property::Kind::U32, league_toolkit::meta::property::Kind::U32))
+            } else {
+                let key_kind = hematite_value_to_ltk(&pairs[0].0)?.kind();
+                let value_kind = hematite_value_to_ltk(&pairs[0].1)?.kind();
+
+                let mut ltk_pairs = Vec::new();
+                for (k, v) in pairs {
+                    ltk_pairs.push((hematite_value_to_ltk(k)?, hematite_value_to_ltk(v)?));
+                }
+                LtkValue::Map(Map::new(key_kind, value_kind, ltk_pairs)?)
+            }
+        }
+    };
+
+    Ok(ltk_val)
 }
 
 #[cfg(any())] // Disable compilation - old broken code
@@ -226,11 +307,22 @@ fn ltk_struct_to_hematite(ltk_struct: &Struct) -> Result<StructValue> {
 }
 
 /// Convert Hematite StructValue to LTK Struct.
-///
-/// **NOT IMPLEMENTED**: LTK types have private fields.
-#[allow(dead_code)]
-fn hematite_struct_to_ltk(_s: &StructValue) -> Result<Struct> {
-    bail!("BIN struct writing not yet implemented")
+fn hematite_struct_to_ltk(s: &StructValue) -> Result<Struct> {
+    let mut properties = IndexMap::new();
+
+    for (name_hash, prop) in &s.properties {
+        let ltk_prop = LtkBinProperty {
+            name_hash: *name_hash,
+            value: hematite_value_to_ltk(&prop.value)?,
+        };
+        properties.insert(*name_hash, ltk_prop);
+    }
+
+    Ok(Struct {
+        class_hash: s.class_hash.0,
+        properties,
+        meta: NoMeta,
+    })
 }
 
 /// Convert LTK Container enum to Vec<PropertyValue>.
@@ -335,11 +427,216 @@ fn ltk_container_to_vec(c: &Container) -> Result<Vec<PropertyValue>> {
 }
 
 /// Convert Vec<PropertyValue> to LTK Container (infers type from first element).
-///
-/// **NOT IMPLEMENTED**: LTK types have private fields.
-#[allow(dead_code)]
-fn vec_to_ltk_container(_items: &[PropertyValue]) -> Result<LtkValue> {
-    bail!("Container writing not yet implemented")
+fn vec_to_ltk_container(items: &[PropertyValue]) -> Result<LtkValue> {
+    if items.is_empty() {
+        // Empty container - default to None type
+        return Ok(LtkValue::Container(Container::from(Vec::<None>::new())));
+    }
+
+    let container = match &items[0] {
+        PropertyValue::Bool(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Bool(v) = item {
+                    ltk_items.push(Bool::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::I8(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::I8(v) = item {
+                    ltk_items.push(I8::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::U8(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::U8(v) = item {
+                    ltk_items.push(U8::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::I16(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::I16(v) = item {
+                    ltk_items.push(I16::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::U16(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::U16(v) = item {
+                    ltk_items.push(U16::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::I32(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::I32(v) = item {
+                    ltk_items.push(I32::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::U32(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::U32(v) = item {
+                    ltk_items.push(U32::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::I64(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::I64(v) = item {
+                    ltk_items.push(I64::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::U64(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::U64(v) = item {
+                    ltk_items.push(U64::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::F32(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::F32(v) = item {
+                    ltk_items.push(F32::new(*v));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Vector2(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Vector2(v) = item {
+                    ltk_items.push(Vector2::new((*v).into()));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Vector3(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Vector3(v) = item {
+                    ltk_items.push(Vector3::new((*v).into()));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Vector4(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Vector4(v) = item {
+                    ltk_items.push(Vector4::new((*v).into()));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Matrix4x4(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Matrix4x4(v) = item {
+                    ltk_items.push(Matrix44::new(glam::Mat4::from_cols_array_2d(v)));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::String(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::String(v) = item {
+                    ltk_items.push(String::new(v.clone()));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Hash(_) | PropertyValue::Link(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                match item {
+                    PropertyValue::Hash(v) | PropertyValue::Link(v) => {
+                        ltk_items.push(Hash::new(*v));
+                    }
+                    _ => bail!("Mixed types in container"),
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Struct(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Struct(v) = item {
+                    ltk_items.push(hematite_struct_to_ltk(v)?);
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        PropertyValue::Embedded(_) => {
+            let mut ltk_items = Vec::new();
+            for item in items {
+                if let PropertyValue::Embedded(v) = item {
+                    ltk_items.push(Embedded(hematite_struct_to_ltk(v)?));
+                } else {
+                    bail!("Mixed types in container");
+                }
+            }
+            Container::from(ltk_items)
+        }
+        _ => bail!("Unsupported container item type"),
+    };
+
+    Ok(LtkValue::Container(container))
 }
 
 #[cfg(any())] // Disable compilation - old broken code
@@ -593,11 +890,41 @@ fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
 }
 
 /// Convert Option<PropertyValue> to LTK Optional (infers type from Some value).
-///
-/// **NOT IMPLEMENTED**: LTK types have private fields.
-#[allow(dead_code)]
-fn option_to_ltk_optional(_opt: &Option<PropertyValue>) -> Result<LtkValue> {
-    bail!("Optional writing not yet implemented")
+fn option_to_ltk_optional(opt: &Option<PropertyValue>) -> Result<LtkValue> {
+    let ltk_opt = match opt {
+        None => LtkValue::Optional(Optional::None(None)),
+        Some(val) => match val {
+            PropertyValue::Bool(v) => LtkValue::Optional(Optional::from(Bool::new(*v))),
+            PropertyValue::I8(v) => LtkValue::Optional(Optional::from(I8::new(*v))),
+            PropertyValue::U8(v) => LtkValue::Optional(Optional::from(U8::new(*v))),
+            PropertyValue::I16(v) => LtkValue::Optional(Optional::from(I16::new(*v))),
+            PropertyValue::U16(v) => LtkValue::Optional(Optional::from(U16::new(*v))),
+            PropertyValue::I32(v) => LtkValue::Optional(Optional::from(I32::new(*v))),
+            PropertyValue::U32(v) => LtkValue::Optional(Optional::from(U32::new(*v))),
+            PropertyValue::I64(v) => LtkValue::Optional(Optional::from(I64::new(*v))),
+            PropertyValue::U64(v) => LtkValue::Optional(Optional::from(U64::new(*v))),
+            PropertyValue::F32(v) => LtkValue::Optional(Optional::from(F32::new(*v))),
+            PropertyValue::Vector2(v) => LtkValue::Optional(Optional::from(Vector2::new((*v).into()))),
+            PropertyValue::Vector3(v) => LtkValue::Optional(Optional::from(Vector3::new((*v).into()))),
+            PropertyValue::Vector4(v) => LtkValue::Optional(Optional::from(Vector4::new((*v).into()))),
+            PropertyValue::Matrix4x4(v) => LtkValue::Optional(Optional::from(Matrix44::new(glam::Mat4::from_cols_array_2d(v)))),
+            PropertyValue::String(v) => LtkValue::Optional(Optional::from(String::new(v.clone()))),
+            PropertyValue::Hash(v) | PropertyValue::Link(v) => LtkValue::Optional(Optional::from(Hash::new(*v))),
+            PropertyValue::WadHash(v) => LtkValue::Optional(Optional::from(WadChunkLink::new(*v))),
+            PropertyValue::Color(rgba) => LtkValue::Optional(Optional::from(Color::new(ltk_primitives::Color {
+                r: rgba[0],
+                g: rgba[1],
+                b: rgba[2],
+                a: rgba[3],
+            }))),
+            PropertyValue::BitBool(v) => LtkValue::Optional(Optional::from(BitBool::new(*v != 0))),
+            PropertyValue::Struct(s) => LtkValue::Optional(Optional::from(hematite_struct_to_ltk(s)?)),
+            PropertyValue::Embedded(s) => LtkValue::Optional(Optional::from(Embedded(hematite_struct_to_ltk(s)?))),
+            _ => bail!("Unsupported optional type"),
+        }
+    };
+
+    Ok(ltk_opt)
 }
 
 #[cfg(any())] // Disable compilation - old broken code

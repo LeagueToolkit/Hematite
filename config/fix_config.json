@@ -153,7 +153,10 @@
                     "size": 4,
                     "endian": "little",
                     "allowed_versions": [134, 145]
-                }
+                },
+                "exclude_files": [
+                    "sfx_events.bnk"
+                ]
             },
             "apply": {
                 "type": "remove_file"

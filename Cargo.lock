@@ -762,6 +762,7 @@ dependencies = [
  "hematite-core",
  "hematite-ltk",
  "hematite-types",
+ "league-toolkit",
  "reqwest",
  "serde",
  "serde_json",
@@ -769,6 +770,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "walkdir",
+ "xxhash-rust",
  "zip",
  "zstd 0.13.3",
 ]
@@ -798,6 +800,7 @@ dependencies = [
  "hematite-types",
  "indexmap",
  "league-toolkit",
+ "ltk_primitives",
  "ltk_texture",
  "tracing",
  "xxhash-rust",

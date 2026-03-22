@@ -207,6 +207,9 @@ pub enum WadDetectionRule {
         extension: String,
         #[serde(default)]
         binary_check: Option<BinaryHeaderCheck>,
+        /// List of filenames to exclude (e.g., ["sfx_events.bnk"])
+        #[serde(default)]
+        exclude_files: Vec<String>,
     },
 
     /// Match files by path pattern (glob-style).

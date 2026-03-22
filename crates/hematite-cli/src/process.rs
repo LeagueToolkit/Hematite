@@ -179,7 +179,16 @@ fn process_bin_file(
 
     // Write back if changes were made and not dry-run
     if !dry_run && result.fixes_applied > 0 {
-        tracing::warn!("BIN writing not yet implemented (LTK limitation) - {} fixes detected but not persisted", result.fixes_applied);
+        let modified_bytes = bin_provider.write_bytes(&ctx.tree)
+            .context("Failed to write modified BIN file")?;
+
+        // Write to output file (original.bin → original.fixed.bin)
+        let output_path = file.with_extension("fixed.bin");
+        std::fs::write(&output_path, &modified_bytes)
+            .context("Failed to save modified BIN file")?;
+
+        tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
+        tracing::info!("  {} fixes applied, {} bytes written", result.fixes_applied, modified_bytes.len());
     }
 
     Ok(result)
@@ -301,7 +310,30 @@ fn process_wad_file(
         };
 
         let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+        let fixes_applied = result.fixes_applied;
         total_result.merge(result);
+
+        // Write modified BIN back to all_files collection
+        if !dry_run && fixes_applied > 0 {
+            match bin_provider.write_bytes(&ctx.tree) {
+                Ok(modified_bytes) => {
+                    // Update the BIN bytes in all_files
+                    if let Some((_, file_bytes)) = all_files.iter_mut().find(|(p, _)| p == path) {
+                        let old_size = file_bytes.len();
+                        *file_bytes = modified_bytes;
+                        tracing::debug!(
+                            "Updated BIN {} in WAD ({} → {} bytes)",
+                            path,
+                            old_size,
+                            file_bytes.len()
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to write modified BIN {}: {}", path, e);
+                }
+            }
+        }
 
         // Collect files marked for removal from this BIN context
         shared_files_to_remove.extend(ctx.files_to_remove);
@@ -310,48 +342,49 @@ fn process_wad_file(
     // Update total files removed count
     total_result.files_removed = shared_files_to_remove.len() as u32;
 
-    // === WAD REBUILDING (not implemented for safety) ===
-    // NOTE: WAD rebuilding is POSSIBLE using league_toolkit::wad::builder::WadBuilder
-    // Example code to rebuild the WAD:
-    //
-    //   use league_toolkit::wad::builder::{WadBuilder, WadChunkBuilder};
-    //   use xxhash_rust::xxh64::xxh64;
-    //
-    //   let mut builder = WadBuilder::default();
-    //   for (path, bytes) in &all_files {
-    //       if !shared_files_to_remove.contains(path) {
-    //           builder = builder.with_chunk(WadChunkBuilder::default().with_path(path));
-    //       }
-    //   }
-    //
-    //   let output_path = file.with_extension("fixed.wad.client");
-    //   let mut output_file = std::fs::File::create(&output_path)?;
-    //   builder.build_to_writer(&mut output_file, |path_hash, cursor| {
-    //       let (_, bytes) = all_files.iter()
-    //           .find(|(p, _)| xxh64(p.to_lowercase().as_bytes(), 0) == path_hash)
-    //           .ok_or_else(|| anyhow::anyhow!("Missing file for hash {}", path_hash))?;
-    //       cursor.write_all(bytes)?;
-    //       Ok(())
-    //   })?;
-    //
-    // Not enabled by default to avoid accidental file corruption during development.
+    // === WAD REBUILDING ===
+    // Write modified WAD if any changes were made and not dry-run
+    if !dry_run && (total_result.fixes_applied > 0 || !shared_files_to_remove.is_empty()) {
+        use league_toolkit::wad::{WadBuilder, WadChunkBuilder};
+        use xxhash_rust::xxh64::xxh64;
+        use std::io::Write;
 
-    if !shared_files_to_remove.is_empty() {
-        tracing::info!("Total files marked for removal: {}", shared_files_to_remove.len());
-        if !dry_run {
-            tracing::warn!("WAD rebuilding disabled for safety - {} files would be removed but changes not persisted", shared_files_to_remove.len());
-            tracing::info!("To enable WAD writing, implement WadBuilder code in process.rs (see commented example)");
-        }
-    }
+        tracing::info!("Building modified WAD...");
 
-    if !dry_run && total_result.fixes_applied > 0 {
-        tracing::warn!(
-            "BIN writing not yet implemented (LTK limitation) - {} BIN fixes detected in WAD but not persisted",
-            total_result.fixes_applied - conversion_count
-        );
-        if conversion_count > 0 {
-            tracing::info!("✓ {} file conversions performed successfully but not written to WAD", conversion_count);
+        let mut builder = WadBuilder::default();
+        let mut chunks_included = 0;
+
+        for (path, _) in &all_files {
+            if !shared_files_to_remove.contains(path) {
+                builder = builder.with_chunk(WadChunkBuilder::default().with_path(path));
+                chunks_included += 1;
+            } else {
+                tracing::debug!("Excluding removed file: {}", path);
+            }
         }
+
+        let output_path = file.with_extension("fixed.wad.client");
+        let mut output_file = std::fs::File::create(&output_path)
+            .context("Failed to create output WAD file")?;
+
+        builder.build_to_writer(&mut output_file, |path_hash, cursor| {
+            let (path, bytes) = all_files.iter()
+                .find(|(p, _)| xxh64(p.to_lowercase().as_bytes(), 0) == path_hash)
+                .ok_or_else(|| std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Missing file for hash {:016X}", path_hash)
+                ))?;
+
+            tracing::trace!("Writing chunk: {} ({} bytes)", path, bytes.len());
+            cursor.write_all(bytes)?;
+            Ok(())
+        })?;
+
+        tracing::info!("✓ Wrote fixed WAD to: {}", output_path.display());
+        tracing::info!("  {} chunks included, {} files removed", chunks_included, shared_files_to_remove.len());
+        tracing::info!("  {} total fixes applied", total_result.fixes_applied);
+    } else if !dry_run {
+        tracing::info!("No changes detected - WAD not modified");
     }
 
     Ok(total_result)
