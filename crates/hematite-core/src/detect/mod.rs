@@ -5,5 +5,6 @@
 
 pub mod bnk;
 pub mod rules;
+pub mod skin;
 
 pub use rules::detect_issue;
