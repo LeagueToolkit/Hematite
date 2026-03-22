@@ -1,12 +1,12 @@
 //! Hash dictionary loading from CDragon txt files.
 
+use anyhow::{Context, Result};
+use hematite_core::traits::HashProvider;
+use hematite_types::hash::{FieldHash, GameHash, PathHash, TypeHash};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use anyhow::{Context, Result};
-use hematite_types::hash::{TypeHash, FieldHash, PathHash, GameHash};
-use hematite_core::traits::HashProvider;
 
 /// Hash provider backed by CDragon txt files.
 pub struct TxtHashProvider {
@@ -41,8 +41,7 @@ impl TxtHashProvider {
 
     /// Get the RitoShark hash directory path.
     pub fn get_hash_dir() -> Result<PathBuf> {
-        let appdata = std::env::var("APPDATA")
-            .context("APPDATA environment variable not set")?;
+        let appdata = std::env::var("APPDATA").context("APPDATA environment variable not set")?;
         Ok(PathBuf::from(appdata)
             .join("RitoShark")
             .join("Requirements")
@@ -62,34 +61,35 @@ impl TxtHashProvider {
 
         let types_file = hash_dir.join("hashes.bintypes.txt");
         if types_file.exists() {
-            provider.types = load_u32_hash_file(&types_file)
-                .context("Failed to load bintypes")?;
+            provider.types = load_u32_hash_file(&types_file).context("Failed to load bintypes")?;
         }
 
         let fields_file = hash_dir.join("hashes.binfields.txt");
         if fields_file.exists() {
-            provider.fields = load_u32_hash_file(&fields_file)
-                .context("Failed to load binfields")?;
+            provider.fields =
+                load_u32_hash_file(&fields_file).context("Failed to load binfields")?;
         }
 
         let entries_file = hash_dir.join("hashes.binentries.txt");
         if entries_file.exists() {
-            provider.entries = load_u32_hash_file(&entries_file)
-                .context("Failed to load binentries")?;
+            provider.entries =
+                load_u32_hash_file(&entries_file).context("Failed to load binentries")?;
         }
 
         let game_file = hash_dir.join("hashes.game.txt");
         if game_file.exists() {
-            provider.game_paths = load_u64_hash_file(&game_file)
-                .context("Failed to load game hashes")?;
+            provider.game_paths =
+                load_u64_hash_file(&game_file).context("Failed to load game hashes")?;
         }
 
-        provider.type_name_to_hash = provider.types
+        provider.type_name_to_hash = provider
+            .types
             .iter()
             .map(|(hash, name)| (name.to_lowercase(), TypeHash(*hash)))
             .collect();
 
-        provider.field_name_to_hash = provider.fields
+        provider.field_name_to_hash = provider
+            .fields
             .iter()
             .map(|(hash, name)| (name.to_lowercase(), FieldHash(*hash)))
             .collect();

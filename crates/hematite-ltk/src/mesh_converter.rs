@@ -25,8 +25,7 @@ pub fn sco_to_scb(sco_bytes: &[u8]) -> Result<Vec<u8>> {
 
     // Parse SCO (ASCII format)
     let mut reader = BufReader::new(Cursor::new(sco_bytes));
-    let mesh = StaticMesh::from_ascii(&mut reader)
-        .context("Failed to parse SCO file")?;
+    let mesh = StaticMesh::from_ascii(&mut reader).context("Failed to parse SCO file")?;
 
     tracing::debug!(
         "Converting SCO→SCB: mesh '{}', {} vertices, {} faces",
@@ -67,8 +66,7 @@ pub fn scb_to_sco(scb_bytes: &[u8]) -> Result<Vec<u8>> {
 
     // Parse SCB (binary format)
     let mut cursor = Cursor::new(scb_bytes);
-    let mesh = StaticMesh::from_reader(&mut cursor)
-        .context("Failed to parse SCB file")?;
+    let mesh = StaticMesh::from_reader(&mut cursor).context("Failed to parse SCB file")?;
 
     tracing::debug!(
         "Converting SCB→SCO: mesh '{}', {} vertices, {} faces",
@@ -96,18 +94,9 @@ pub fn scb_to_sco(scb_bytes: &[u8]) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     #[ignore] // Requires actual SCO/SCB files
     fn test_sco_to_scb_roundtrip() {
-        // Test roundtrip: SCO → SCB → SCO should preserve data
-        // This would require sample files for testing
-    }
-
-    #[test]
-    #[ignore] // Requires actual SCO/SCB files
-    fn test_scb_to_sco_conversion() {
-        // Test SCB → SCO conversion with real files
+        // Requires real mesh files — tested manually with sample files
     }
 }

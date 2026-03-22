@@ -4,9 +4,9 @@
 //! needs: the BIN tree being processed, hash lookups, WAD existence checks,
 //! and champion relationship data.
 
+use crate::traits::{HashProvider, WadProvider};
 use hematite_types::bin::BinTree;
 use hematite_types::champion::CharacterRelations;
-use crate::traits::{HashProvider, WadProvider};
 
 /// Runtime state for a fix session on a single BIN file.
 ///

@@ -24,13 +24,12 @@ use std::io::Cursor;
 /// For lossless conversion, we'd need to copy raw compressed blocks, but
 /// DDS and TEX have different mipmap ordering (DDS: large→small, TEX: small→large).
 pub fn dds_to_tex(dds_bytes: &[u8]) -> Result<Vec<u8>> {
-    use league_toolkit::texture::{Dds, Tex};
     use league_toolkit::texture::tex::{EncodeOptions, Format as TexFormat};
+    use league_toolkit::texture::{Dds, Tex};
 
     // Parse DDS
     let mut cursor = Cursor::new(dds_bytes);
-    let dds = Dds::from_reader(&mut cursor)
-        .context("Failed to parse DDS file")?;
+    let dds = Dds::from_reader(&mut cursor).context("Failed to parse DDS file")?;
 
     tracing::debug!(
         "Converting DDS: {}x{}, {} mipmaps",
@@ -40,10 +39,12 @@ pub fn dds_to_tex(dds_bytes: &[u8]) -> Result<Vec<u8>> {
     );
 
     // Decode first mipmap to RGBA
-    let surface = dds.decode_mipmap(0)
+    let surface = dds
+        .decode_mipmap(0)
         .context("Failed to decode DDS mipmap")?;
 
-    let rgba_image = surface.into_image()
+    let rgba_image = surface
+        .into_image()
         .context("Failed to convert surface to RGBA")?;
 
     // Determine TEX format from DDS format
@@ -65,13 +66,11 @@ pub fn dds_to_tex(dds_bytes: &[u8]) -> Result<Vec<u8>> {
         options = options.with_mipmaps();
     }
 
-    let tex = Tex::encode_rgba_image(&rgba_image, options)
-        .context("Failed to encode TEX")?;
+    let tex = Tex::encode_rgba_image(&rgba_image, options).context("Failed to encode TEX")?;
 
     // Serialize TEX to bytes
     let mut output = Vec::new();
-    tex.write(&mut output)
-        .context("Failed to write TEX data")?;
+    tex.write(&mut output).context("Failed to write TEX data")?;
 
     tracing::info!(
         "Converted DDS→TEX: {}x{} ({:?}), {} mipmaps, {} bytes → {} bytes",
@@ -144,17 +143,9 @@ fn estimate_dds_data_size(dds: &league_toolkit::texture::Dds) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     #[ignore] // Requires actual DDS file
     fn test_dds_to_tex_conversion() {
-        // This test requires a real DDS file
-        // In practice, this would be tested with sample DDS files
-    }
-
-    #[test]
-    fn test_format_detection() {
-        // Unit tests for format detection would go here
+        // Requires a real DDS file — tested manually with sample files
     }
 }

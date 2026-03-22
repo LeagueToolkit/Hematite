@@ -7,9 +7,9 @@
 //! Also handles type conversions (e.g. vec3 → vec4) for the `ChangeFieldType`
 //! transform action.
 
-use anyhow::{Result, anyhow};
-use hematite_types::bin::PropertyValue;
 use crate::strings::fnv1a_hash;
+use anyhow::{anyhow, Result};
+use hematite_types::bin::PropertyValue;
 
 /// Convert a JSON value to a PropertyValue based on the declared data type.
 ///
@@ -19,10 +19,7 @@ use crate::strings::fnv1a_hash;
 ///
 /// # Returns
 /// The converted PropertyValue, or an error if conversion fails
-pub fn json_to_value(
-    value: &serde_json::Value,
-    data_type: &str,
-) -> Result<PropertyValue> {
+pub fn json_to_value(value: &serde_json::Value, data_type: &str) -> Result<PropertyValue> {
     let type_lower = data_type.to_lowercase();
 
     match type_lower.as_str() {
@@ -67,33 +64,57 @@ pub fn json_to_value(
             Ok(PropertyValue::F32(v))
         }
         "vector2" | "vec2" => {
-            let arr = value.as_array().ok_or_else(|| anyhow!("Expected array for vec2"))?;
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected array for vec2"))?;
             if arr.len() != 2 {
                 return Err(anyhow!("Vec2 requires exactly 2 elements"));
             }
-            let x = arr[0].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec2[0]"))? as f32;
-            let y = arr[1].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec2[1]"))? as f32;
+            let x = arr[0]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec2[0]"))? as f32;
+            let y = arr[1]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec2[1]"))? as f32;
             Ok(PropertyValue::Vector2([x, y]))
         }
         "vector3" | "vec3" => {
-            let arr = value.as_array().ok_or_else(|| anyhow!("Expected array for vec3"))?;
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected array for vec3"))?;
             if arr.len() != 3 {
                 return Err(anyhow!("Vec3 requires exactly 3 elements"));
             }
-            let x = arr[0].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec3[0]"))? as f32;
-            let y = arr[1].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec3[1]"))? as f32;
-            let z = arr[2].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec3[2]"))? as f32;
+            let x = arr[0]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec3[0]"))? as f32;
+            let y = arr[1]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec3[1]"))? as f32;
+            let z = arr[2]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec3[2]"))? as f32;
             Ok(PropertyValue::Vector3([x, y, z]))
         }
         "vector4" | "vec4" => {
-            let arr = value.as_array().ok_or_else(|| anyhow!("Expected array for vec4"))?;
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected array for vec4"))?;
             if arr.len() != 4 {
                 return Err(anyhow!("Vec4 requires exactly 4 elements"));
             }
-            let x = arr[0].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec4[0]"))? as f32;
-            let y = arr[1].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec4[1]"))? as f32;
-            let z = arr[2].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec4[2]"))? as f32;
-            let w = arr[3].as_f64().ok_or_else(|| anyhow!("Expected f32 for vec4[3]"))? as f32;
+            let x = arr[0]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec4[0]"))? as f32;
+            let y = arr[1]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec4[1]"))? as f32;
+            let z = arr[2]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec4[2]"))? as f32;
+            let w = arr[3]
+                .as_f64()
+                .ok_or_else(|| anyhow!("Expected f32 for vec4[3]"))? as f32;
             Ok(PropertyValue::Vector4([x, y, z, w]))
         }
         "string" => {
@@ -101,22 +122,36 @@ pub fn json_to_value(
             Ok(PropertyValue::String(v.to_string()))
         }
         "hash" => {
-            let v = value.as_u64().ok_or_else(|| anyhow!("Expected u32 for hash"))? as u32;
+            let v = value
+                .as_u64()
+                .ok_or_else(|| anyhow!("Expected u32 for hash"))? as u32;
             Ok(PropertyValue::Hash(v))
         }
         "link" => {
-            let v = value.as_u64().ok_or_else(|| anyhow!("Expected u32 for link"))? as u32;
+            let v = value
+                .as_u64()
+                .ok_or_else(|| anyhow!("Expected u32 for link"))? as u32;
             Ok(PropertyValue::Link(v))
         }
         "color" => {
-            let arr = value.as_array().ok_or_else(|| anyhow!("Expected array for color"))?;
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected array for color"))?;
             if arr.len() != 4 {
                 return Err(anyhow!("Color requires exactly 4 elements (RGBA)"));
             }
-            let r = arr[0].as_u64().ok_or_else(|| anyhow!("Expected u8 for color[0]"))? as u8;
-            let g = arr[1].as_u64().ok_or_else(|| anyhow!("Expected u8 for color[1]"))? as u8;
-            let b = arr[2].as_u64().ok_or_else(|| anyhow!("Expected u8 for color[2]"))? as u8;
-            let a = arr[3].as_u64().ok_or_else(|| anyhow!("Expected u8 for color[3]"))? as u8;
+            let r = arr[0]
+                .as_u64()
+                .ok_or_else(|| anyhow!("Expected u8 for color[0]"))? as u8;
+            let g = arr[1]
+                .as_u64()
+                .ok_or_else(|| anyhow!("Expected u8 for color[1]"))? as u8;
+            let b = arr[2]
+                .as_u64()
+                .ok_or_else(|| anyhow!("Expected u8 for color[2]"))? as u8;
+            let a = arr[3]
+                .as_u64()
+                .ok_or_else(|| anyhow!("Expected u8 for color[3]"))? as u8;
             Ok(PropertyValue::Color([r, g, b, a]))
         }
         _ => Err(anyhow!("Unknown data type: {}", data_type)),
@@ -195,14 +230,12 @@ pub fn convert_type(
             }
         }
 
-        ("link" | "hash", "string") => {
-            match value {
-                PropertyValue::Link(h) | PropertyValue::Hash(h) => {
-                    Ok(Some(PropertyValue::String(format!("{:08x}", h))))
-                }
-                _ => Ok(None),
+        ("link" | "hash", "string") => match value {
+            PropertyValue::Link(h) | PropertyValue::Hash(h) => {
+                Ok(Some(PropertyValue::String(format!("{:08x}", h))))
             }
-        }
+            _ => Ok(None),
+        },
 
         ("string", "link" | "hash") => {
             if let PropertyValue::String(s) = value {
@@ -313,9 +346,10 @@ pub fn matches_json(value: &PropertyValue, expected: &serde_json::Value) -> bool
             n.as_i64().map(|e| *v == e).unwrap_or(false)
         }
 
-        (PropertyValue::F32(v), serde_json::Value::Number(n)) => {
-            n.as_f64().map(|e| (*v - e as f32).abs() < 0.0001).unwrap_or(false)
-        }
+        (PropertyValue::F32(v), serde_json::Value::Number(n)) => n
+            .as_f64()
+            .map(|e| (*v - e as f32).abs() < 0.0001)
+            .unwrap_or(false),
 
         (PropertyValue::String(v), serde_json::Value::String(e)) => v == e,
         (PropertyValue::Hash(v), serde_json::Value::Number(n)) => {
@@ -330,21 +364,48 @@ pub fn matches_json(value: &PropertyValue, expected: &serde_json::Value) -> bool
 
         (PropertyValue::Vector2([x, y]), serde_json::Value::Array(arr)) => {
             arr.len() == 2
-                && arr[0].as_f64().map(|e| (*x - e as f32).abs() < 0.0001).unwrap_or(false)
-                && arr[1].as_f64().map(|e| (*y - e as f32).abs() < 0.0001).unwrap_or(false)
+                && arr[0]
+                    .as_f64()
+                    .map(|e| (*x - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
+                && arr[1]
+                    .as_f64()
+                    .map(|e| (*y - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
         }
         (PropertyValue::Vector3([x, y, z]), serde_json::Value::Array(arr)) => {
             arr.len() == 3
-                && arr[0].as_f64().map(|e| (*x - e as f32).abs() < 0.0001).unwrap_or(false)
-                && arr[1].as_f64().map(|e| (*y - e as f32).abs() < 0.0001).unwrap_or(false)
-                && arr[2].as_f64().map(|e| (*z - e as f32).abs() < 0.0001).unwrap_or(false)
+                && arr[0]
+                    .as_f64()
+                    .map(|e| (*x - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
+                && arr[1]
+                    .as_f64()
+                    .map(|e| (*y - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
+                && arr[2]
+                    .as_f64()
+                    .map(|e| (*z - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
         }
         (PropertyValue::Vector4([x, y, z, w]), serde_json::Value::Array(arr)) => {
             arr.len() == 4
-                && arr[0].as_f64().map(|e| (*x - e as f32).abs() < 0.0001).unwrap_or(false)
-                && arr[1].as_f64().map(|e| (*y - e as f32).abs() < 0.0001).unwrap_or(false)
-                && arr[2].as_f64().map(|e| (*z - e as f32).abs() < 0.0001).unwrap_or(false)
-                && arr[3].as_f64().map(|e| (*w - e as f32).abs() < 0.0001).unwrap_or(false)
+                && arr[0]
+                    .as_f64()
+                    .map(|e| (*x - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
+                && arr[1]
+                    .as_f64()
+                    .map(|e| (*y - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
+                && arr[2]
+                    .as_f64()
+                    .map(|e| (*z - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
+                && arr[3]
+                    .as_f64()
+                    .map(|e| (*w - e as f32).abs() < 0.0001)
+                    .unwrap_or(false)
         }
 
         (PropertyValue::Color([r, g, b, a]), serde_json::Value::Array(arr)) => {
@@ -489,14 +550,26 @@ mod tests {
 
     #[test]
     fn test_matches_json_bool() {
-        assert!(matches_json(&PropertyValue::Bool(true), &serde_json::json!(true)));
-        assert!(!matches_json(&PropertyValue::Bool(true), &serde_json::json!(false)));
+        assert!(matches_json(
+            &PropertyValue::Bool(true),
+            &serde_json::json!(true)
+        ));
+        assert!(!matches_json(
+            &PropertyValue::Bool(true),
+            &serde_json::json!(false)
+        ));
     }
 
     #[test]
     fn test_matches_json_integer() {
-        assert!(matches_json(&PropertyValue::U32(42), &serde_json::json!(42)));
-        assert!(!matches_json(&PropertyValue::U32(42), &serde_json::json!(43)));
+        assert!(matches_json(
+            &PropertyValue::U32(42),
+            &serde_json::json!(42)
+        ));
+        assert!(!matches_json(
+            &PropertyValue::U32(42),
+            &serde_json::json!(43)
+        ));
     }
 
     #[test]
@@ -525,7 +598,13 @@ mod tests {
 
     #[test]
     fn test_matches_json_type_mismatch() {
-        assert!(!matches_json(&PropertyValue::U32(42), &serde_json::json!("42")));
-        assert!(!matches_json(&PropertyValue::String("42".to_string()), &serde_json::json!(42)));
+        assert!(!matches_json(
+            &PropertyValue::U32(42),
+            &serde_json::json!("42")
+        ));
+        assert!(!matches_json(
+            &PropertyValue::String("42".to_string()),
+            &serde_json::json!(42)
+        ));
     }
 }

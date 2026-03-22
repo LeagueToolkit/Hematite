@@ -8,13 +8,13 @@
 //!
 //! All hashes are loaded into memory at startup for O(1) lookups.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
 use anyhow::{Context, Result};
 use heed::types::{Bytes, Str};
 use heed::{Database, EnvOpenOptions};
-use hematite_types::hash::{TypeHash, FieldHash, PathHash, GameHash};
 use hematite_core::traits::HashProvider;
+use hematite_types::hash::{FieldHash, GameHash, PathHash, TypeHash};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Hash provider backed by LMDB database.
 ///
@@ -39,8 +39,7 @@ pub struct LmdbHashProvider {
 impl LmdbHashProvider {
     /// Get the RitoShark LMDB hash file path.
     pub fn get_hash_path() -> Result<PathBuf> {
-        let appdata = std::env::var("APPDATA")
-            .context("APPDATA environment variable not set")?;
+        let appdata = std::env::var("APPDATA").context("APPDATA environment variable not set")?;
         Ok(PathBuf::from(appdata)
             .join("RitoShark")
             .join("Requirements")
@@ -96,39 +95,60 @@ impl LmdbHashProvider {
 
         // Load all hashes into memory
         let mut types = HashMap::new();
-        for item in types_db.iter(&rtxn).context("Failed to iterate types database")? {
+        for item in types_db
+            .iter(&rtxn)
+            .context("Failed to iterate types database")?
+        {
             let (key_bytes, name) = item.context("Failed to read type entry")?;
             if key_bytes.len() == 4 {
-                let hash = u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
+                let hash =
+                    u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
                 types.insert(hash, name.to_string());
             }
         }
 
         let mut fields = HashMap::new();
-        for item in fields_db.iter(&rtxn).context("Failed to iterate fields database")? {
+        for item in fields_db
+            .iter(&rtxn)
+            .context("Failed to iterate fields database")?
+        {
             let (key_bytes, name) = item.context("Failed to read field entry")?;
             if key_bytes.len() == 4 {
-                let hash = u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
+                let hash =
+                    u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
                 fields.insert(hash, name.to_string());
             }
         }
 
         let mut entries = HashMap::new();
-        for item in entries_db.iter(&rtxn).context("Failed to iterate entries database")? {
+        for item in entries_db
+            .iter(&rtxn)
+            .context("Failed to iterate entries database")?
+        {
             let (key_bytes, name) = item.context("Failed to read entry entry")?;
             if key_bytes.len() == 4 {
-                let hash = u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
+                let hash =
+                    u32::from_be_bytes([key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3]]);
                 entries.insert(hash, name.to_string());
             }
         }
 
         let mut game_paths = HashMap::new();
-        for item in wad_db.iter(&rtxn).context("Failed to iterate wad database")? {
+        for item in wad_db
+            .iter(&rtxn)
+            .context("Failed to iterate wad database")?
+        {
             let (key_bytes, name) = item.context("Failed to read wad entry")?;
             if key_bytes.len() == 8 {
                 let hash = u64::from_be_bytes([
-                    key_bytes[0], key_bytes[1], key_bytes[2], key_bytes[3],
-                    key_bytes[4], key_bytes[5], key_bytes[6], key_bytes[7],
+                    key_bytes[0],
+                    key_bytes[1],
+                    key_bytes[2],
+                    key_bytes[3],
+                    key_bytes[4],
+                    key_bytes[5],
+                    key_bytes[6],
+                    key_bytes[7],
                 ]);
                 game_paths.insert(hash, name.to_string());
             }
@@ -195,4 +215,3 @@ impl HashProvider for LmdbHashProvider {
         !self.types.is_empty() || !self.fields.is_empty()
     }
 }
-

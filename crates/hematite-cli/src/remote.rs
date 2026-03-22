@@ -29,22 +29,19 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 fn get_cache_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        let appdata = std::env::var("APPDATA")
-            .context("APPDATA environment variable not set")?;
+        let appdata = std::env::var("APPDATA").context("APPDATA environment variable not set")?;
         Ok(PathBuf::from(appdata).join("Hematite").join("cache"))
     }
 
     #[cfg(target_os = "macos")]
     {
-        let home = std::env::var("HOME")
-            .context("HOME environment variable not set")?;
+        let home = std::env::var("HOME").context("HOME environment variable not set")?;
         Ok(PathBuf::from(home).join("Library/Application Support/Hematite/cache"))
     }
 
     #[cfg(target_os = "linux")]
     {
-        let home = std::env::var("HOME")
-            .context("HOME environment variable not set")?;
+        let home = std::env::var("HOME").context("HOME environment variable not set")?;
         Ok(PathBuf::from(home).join(".config/hematite/cache"))
     }
 
@@ -83,10 +80,7 @@ fn fetch_json(url: &str) -> Result<String> {
         .build()
         .context("Failed to create HTTP client")?;
 
-    let response = client
-        .get(url)
-        .send()
-        .context("HTTP request failed")?;
+    let response = client.get(url).send().context("HTTP request failed")?;
 
     if !response.status().is_success() {
         anyhow::bail!("HTTP {} from {}", response.status(), url);
@@ -223,7 +217,10 @@ pub fn load_champion_list() -> ChampionList {
     if cache_file.exists() {
         if let Ok(content) = fs::read_to_string(&cache_file) {
             if let Ok(list) = serde_json::from_str::<ChampionList>(&content) {
-                tracing::info!("Using stale cached champion list (version {})", list.version);
+                tracing::info!(
+                    "Using stale cached champion list (version {})",
+                    list.version
+                );
                 return list;
             }
         }
@@ -256,8 +253,9 @@ pub fn clear_cache() -> Result<()> {
     let cache_dir = get_cache_dir()?;
 
     if cache_dir.exists() {
-        fs::remove_dir_all(&cache_dir)
-            .with_context(|| format!("Failed to remove cache directory: {}", cache_dir.display()))?;
+        fs::remove_dir_all(&cache_dir).with_context(|| {
+            format!("Failed to remove cache directory: {}", cache_dir.display())
+        })?;
         tracing::info!("Cleared config cache at {}", cache_dir.display());
     }
 

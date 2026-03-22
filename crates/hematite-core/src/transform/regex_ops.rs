@@ -9,8 +9,8 @@
 //! Computes new FNV-1a hash from the renamed field name.
 
 use crate::context::FixContext;
-use crate::walk::{PropertyVisitor, VisitResult, walk_tree};
 use crate::strings::fnv1a_hash;
+use crate::walk::{walk_tree, PropertyVisitor, VisitResult};
 use hematite_types::hash::FieldHash;
 use regex::Regex;
 use std::collections::HashSet;
@@ -30,7 +30,10 @@ impl PropertyVisitor for RegexReplacer {
         }
 
         if self.pattern.is_match(value) {
-            let new_val = self.pattern.replace_all(value, &*self.replacement).to_string();
+            let new_val = self
+                .pattern
+                .replace_all(value, &*self.replacement)
+                .to_string();
             if new_val != value {
                 return VisitResult::Mutate(new_val);
             }

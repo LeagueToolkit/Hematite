@@ -74,7 +74,10 @@ pub fn parse_bnk_version(data: &[u8], min_version: u32) -> BnkInfo {
                     format!("Version {} is current", version)
                 } else {
                     // version > min_version
-                    format!("Version {} is newer than expected (tool may need update)", version)
+                    format!(
+                        "Version {} is newer than expected (tool may need update)",
+                        version
+                    )
                 };
 
                 return BnkInfo {

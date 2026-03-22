@@ -4,7 +4,7 @@
 //! implementations from the old codebase. Fix modules implement [`PropertyVisitor`]
 //! and let the walker handle traversal logic.
 
-use hematite_types::bin::{BinTree, BinObject, PropertyValue, StructValue};
+use hematite_types::bin::{BinObject, BinTree, PropertyValue, StructValue};
 use hematite_types::hash::FieldHash;
 
 /// Result of visiting a string value.
@@ -74,7 +74,11 @@ pub fn walk_tree(tree: &mut BinTree, visitor: &mut dyn PropertyVisitor) -> u32 {
         .sum()
 }
 
-fn walk_value(value: &mut PropertyValue, field_hash: u32, visitor: &mut dyn PropertyVisitor) -> u32 {
+fn walk_value(
+    value: &mut PropertyValue,
+    field_hash: u32,
+    visitor: &mut dyn PropertyVisitor,
+) -> u32 {
     use PropertyValue::*;
     let mut mutations = 0;
 
@@ -111,9 +115,9 @@ fn walk_value(value: &mut PropertyValue, field_hash: u32, visitor: &mut dyn Prop
             }
         }
 
-        Bool(_) | I8(_) | U8(_) | I16(_) | U16(_) | I32(_) | U32(_) | I64(_) | U64(_) | F32(_) |
-        Vector2(_) | Vector3(_) | Vector4(_) | Matrix4x4(_) | Hash(_) | WadHash(_) |
-        Link(_) | Color(_) | BitBool(_) => {}
+        Bool(_) | I8(_) | U8(_) | I16(_) | U16(_) | I32(_) | U32(_) | I64(_) | U64(_) | F32(_)
+        | Vector2(_) | Vector3(_) | Vector4(_) | Matrix4x4(_) | Hash(_) | WadHash(_) | Link(_)
+        | Color(_) | BitBool(_) => {}
     }
 
     mutations
@@ -171,7 +175,7 @@ pub fn extract_strings(tree: &BinTree) -> Vec<String> {
 mod tests {
     use super::*;
     use hematite_types::bin::BinProperty;
-    use hematite_types::hash::{TypeHash, PathHash};
+    use hematite_types::hash::{PathHash, TypeHash};
     use indexmap::IndexMap;
 
     #[test]

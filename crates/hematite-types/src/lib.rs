@@ -12,9 +12,9 @@
 //! - [`result`] — Processing and fix result types
 //! - [`champion`] — Champion list and character-relation lookups
 
-pub mod hash;
 pub mod bin;
-pub mod wad;
-pub mod config;
-pub mod result;
 pub mod champion;
+pub mod config;
+pub mod hash;
+pub mod result;
+pub mod wad;

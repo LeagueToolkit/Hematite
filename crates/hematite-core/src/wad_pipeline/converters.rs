@@ -34,7 +34,8 @@ impl ConverterRegistry {
 
     /// Convert a file using the specified converter.
     pub fn convert(&self, converter_name: &str, input: &[u8]) -> Result<Vec<u8>> {
-        let converter = self.converters
+        let converter = self
+            .converters
             .get(converter_name)
             .ok_or_else(|| anyhow::anyhow!("Converter not found: {}", converter_name))?;
 

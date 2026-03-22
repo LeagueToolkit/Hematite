@@ -6,14 +6,14 @@
 //! ## Design rationale
 //! - `BinProvider`: Wraps BIN parsing/serialization. When LTK changes its BinTree API,
 //!   only the adapter implementation changes.
-//! - `HashProvider`: Wraps hash dictionary loading. Today: txt files. Tomorrow: lmdb.
+//! - `HashProvider`: Wraps hash dictionary loading (LMDB or txt files).
 //!   Reverse lookups (name → hash) are required for the fix engine.
 //! - `WadProvider`: Wraps WAD path lookups. The fix engine only asks "does this path
 //!   exist?" — it never reads WAD chunk data directly.
 
 use anyhow::Result;
 use hematite_types::bin::BinTree;
-use hematite_types::hash::{TypeHash, FieldHash, PathHash, GameHash};
+use hematite_types::hash::{FieldHash, GameHash, PathHash, TypeHash};
 
 /// Abstraction over BIN file parsing and serialization.
 ///

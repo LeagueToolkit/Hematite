@@ -9,9 +9,9 @@
 //!
 //! ## Old code: ~90 LOC recursive walk. New code: ~20 LOC visitor impl.
 
-use hematite_types::hash::FieldHash;
 use crate::context::FixContext;
-use crate::walk::{PropertyVisitor, walk_tree};
+use crate::walk::{walk_tree, PropertyVisitor};
+use hematite_types::hash::FieldHash;
 
 struct RenameHashVisitor {
     from: u32,

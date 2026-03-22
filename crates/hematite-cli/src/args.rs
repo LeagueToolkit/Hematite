@@ -67,7 +67,10 @@ pub struct Cli {
     #[arg(long, help = "Show what would be fixed without modifying files")]
     pub dry_run: bool,
 
-    #[arg(long, help = "Small mod optimization: only validate paths, don't add fallback assets")]
+    #[arg(
+        long,
+        help = "Small mod optimization: only validate paths, don't add fallback assets"
+    )]
     pub small_mod: bool,
 
     #[arg(long, help = "Process all skins found in mod (not just primary skin)")]
@@ -103,16 +106,28 @@ const ALL_FIX_IDS: &[&str] = &[
 /// Otherwise, returns only the specifically selected fixes.
 pub fn collect_selected_fixes(cli: &Cli) -> Vec<String> {
     let mut fixes = Vec::new();
-    if cli.healthbar { fixes.push("healthbar_fix".into()); }
+    if cli.healthbar {
+        fixes.push("healthbar_fix".into());
+    }
     if cli.white_model {
         fixes.push("staticmat_texturepath".into());
         fixes.push("staticmat_samplername".into());
     }
-    if cli.black_icons { fixes.push("black_icons".into()); }
-    if cli.particles { fixes.push("dds_to_tex".into()); }
-    if cli.remove_champion_bins { fixes.push("champion_bin_remover".into()); }
-    if cli.remove_bnk { fixes.push("bnk_remover".into()); }
-    if cli.vfx_shape { fixes.push("vfx_shape_fix".into()); }
+    if cli.black_icons {
+        fixes.push("black_icons".into());
+    }
+    if cli.particles {
+        fixes.push("dds_to_tex".into());
+    }
+    if cli.remove_champion_bins {
+        fixes.push("champion_bin_remover".into());
+    }
+    if cli.remove_bnk {
+        fixes.push("bnk_remover".into());
+    }
+    if cli.vfx_shape {
+        fixes.push("vfx_shape_fix".into());
+    }
 
     // If --all or no specific flags: apply all fixes
     if cli.all || fixes.is_empty() {

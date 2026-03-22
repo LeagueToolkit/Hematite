@@ -1,12 +1,12 @@
 //! WAD path lookup and chunk extraction using ltk_wad.
 
-use std::collections::HashSet;
-use std::io::{BufReader, Cursor, Read, Seek};
-use std::path::Path;
 use anyhow::{Context, Result};
 use hematite_core::traits::{HashProvider, WadProvider};
 use hematite_types::hash::GameHash;
 use league_toolkit::wad::Wad;
+use std::collections::HashSet;
+use std::io::{BufReader, Cursor, Read, Seek};
+use std::path::Path;
 use xxhash_rust::xxh64::xxh64;
 
 /// WAD provider backed by league-toolkit's ltk_wad.
@@ -27,8 +27,8 @@ impl LtkWadProvider {
 
     /// Build from a WAD file on disk.
     pub fn from_file(path: &Path) -> Result<Self> {
-        let file = std::fs::File::open(path)
-            .with_context(|| format!("Failed to open WAD: {:?}", path))?;
+        let file =
+            std::fs::File::open(path).with_context(|| format!("Failed to open WAD: {:?}", path))?;
         let reader = BufReader::new(file);
         Self::from_reader(reader)
     }
@@ -41,8 +41,8 @@ impl LtkWadProvider {
 
     /// Internal: Build from any Read+Seek source.
     fn from_reader<R: Read + Seek>(reader: R) -> Result<Self> {
-        let wad = Wad::mount(reader)
-            .map_err(|e| anyhow::anyhow!("Failed to parse WAD: {:?}", e))?;
+        let wad =
+            Wad::mount(reader).map_err(|e| anyhow::anyhow!("Failed to parse WAD: {:?}", e))?;
 
         let mut provider = Self::new();
 
@@ -88,11 +88,11 @@ pub struct WadFile<R: Read + Seek> {
 impl WadFile<BufReader<std::fs::File>> {
     /// Open a WAD file from disk.
     pub fn open(path: &Path) -> Result<Self> {
-        let file = std::fs::File::open(path)
-            .with_context(|| format!("Failed to open WAD: {:?}", path))?;
+        let file =
+            std::fs::File::open(path).with_context(|| format!("Failed to open WAD: {:?}", path))?;
         let reader = BufReader::new(file);
-        let wad = Wad::mount(reader)
-            .map_err(|e| anyhow::anyhow!("Failed to parse WAD: {:?}", e))?;
+        let wad =
+            Wad::mount(reader).map_err(|e| anyhow::anyhow!("Failed to parse WAD: {:?}", e))?;
         Ok(Self { wad })
     }
 }
@@ -116,9 +116,15 @@ impl<R: Read + Seek> WadFile<R> {
     /// Uses the hash provider to resolve chunk path hashes to file paths,
     /// then extracts chunks whose path ends with `.bin`.
     /// Returns a vec of (resolved_path, decompressed_bytes) pairs.
-    pub fn extract_bin_files(&mut self, hashes: &dyn HashProvider) -> Result<Vec<(String, Vec<u8>)>> {
+    pub fn extract_bin_files(
+        &mut self,
+        hashes: &dyn HashProvider,
+    ) -> Result<Vec<(String, Vec<u8>)>> {
         // Collect BIN chunk info first (path_hash + resolved path)
-        let bin_chunks: Vec<(u64, String)> = self.wad.chunks().iter()
+        let bin_chunks: Vec<(u64, String)> = self
+            .wad
+            .chunks()
+            .iter()
             .filter_map(|chunk| {
                 let path = hashes.resolve_game_path(GameHash(chunk.path_hash))?;
                 if path.to_lowercase().ends_with(".bin") {
@@ -176,9 +182,15 @@ impl<R: Read + Seek> WadFile<R> {
     ///
     /// Returns a vec of (resolved_path, decompressed_bytes) pairs for all extractable chunks.
     /// Files without resolved paths in the hash dictionary are skipped.
-    pub fn extract_all_files(&mut self, hashes: &dyn HashProvider) -> Result<Vec<(String, Vec<u8>)>> {
+    pub fn extract_all_files(
+        &mut self,
+        hashes: &dyn HashProvider,
+    ) -> Result<Vec<(String, Vec<u8>)>> {
         // Collect all chunk info (path_hash + resolved path)
-        let all_chunks: Vec<(u64, String)> = self.wad.chunks().iter()
+        let all_chunks: Vec<(u64, String)> = self
+            .wad
+            .chunks()
+            .iter()
             .filter_map(|chunk| {
                 let path = hashes.resolve_game_path(GameHash(chunk.path_hash))?;
                 Some((chunk.path_hash, path.to_string()))
@@ -233,9 +245,15 @@ impl<R: Read + Seek> WadFile<R> {
     /// Uses the hash provider to resolve chunk path hashes to file paths,
     /// then extracts chunks whose path ends with `.bnk`.
     /// Returns a vec of (resolved_path, decompressed_bytes) pairs.
-    pub fn extract_bnk_files(&mut self, hashes: &dyn HashProvider) -> Result<Vec<(String, Vec<u8>)>> {
+    pub fn extract_bnk_files(
+        &mut self,
+        hashes: &dyn HashProvider,
+    ) -> Result<Vec<(String, Vec<u8>)>> {
         // Collect BNK chunk info first (path_hash + resolved path)
-        let bnk_chunks: Vec<(u64, String)> = self.wad.chunks().iter()
+        let bnk_chunks: Vec<(u64, String)> = self
+            .wad
+            .chunks()
+            .iter()
             .filter_map(|chunk| {
                 let path = hashes.resolve_game_path(GameHash(chunk.path_hash))?;
                 if path.to_lowercase().ends_with(".bnk") {

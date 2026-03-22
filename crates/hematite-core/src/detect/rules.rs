@@ -12,13 +12,13 @@
 //! | `BnkVersionNotIn` | BNK audio version not in allowed list (file-level) |
 //! | `VfxShapeNeedsFix` | VFX shape has old format (pre-14.1) |
 
+use crate::factory::matches_json;
+use crate::filter;
+use crate::traits::{HashProvider, WadProvider};
+use crate::walk::extract_strings;
 use hematite_types::bin::{BinTree, PropertyValue, StructValue};
 use hematite_types::config::DetectionRule;
 use hematite_types::hash::FieldHash;
-use crate::traits::{HashProvider, WadProvider};
-use crate::walk::extract_strings;
-use crate::factory::matches_json;
-use crate::filter;
 
 /// Main detection dispatch. Returns true if the issue is detected.
 pub fn detect_issue(
@@ -63,9 +63,7 @@ pub fn detect_issue(
             detect_entry_type_exists(tree, hashes, entry_types)
         }
 
-        DetectionRule::BnkVersionNotIn { .. } => {
-            false
-        }
+        DetectionRule::BnkVersionNotIn { .. } => false,
 
         DetectionRule::VfxShapeNeedsFix { entry_type } => {
             detect_vfx_shape_needs_fix(tree, hashes, entry_type)
@@ -331,11 +329,7 @@ fn detect_entry_type_exists(
     false
 }
 
-fn detect_vfx_shape_needs_fix(
-    tree: &BinTree,
-    hashes: &dyn HashProvider,
-    entry_type: &str,
-) -> bool {
+fn detect_vfx_shape_needs_fix(tree: &BinTree, hashes: &dyn HashProvider, entry_type: &str) -> bool {
     if !hashes.is_loaded() {
         return false;
     }
@@ -383,7 +377,7 @@ fn has_old_vfx_shape_format(shape: &StructValue, birth_translation_hash: FieldHa
 mod tests {
     use super::*;
     use hematite_types::bin::{BinObject, BinProperty};
-    use hematite_types::hash::{TypeHash, PathHash};
+    use hematite_types::hash::{PathHash, TypeHash};
     use indexmap::IndexMap;
     use std::collections::HashMap;
 

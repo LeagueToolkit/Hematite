@@ -15,12 +15,14 @@
 //! }
 //! ```
 
-use hematite_types::bin::{BinTree, BinObject};
+use hematite_types::bin::{BinObject, BinTree};
 use hematite_types::hash::TypeHash;
 
 /// Iterate objects matching a specific class hash (immutable).
 pub fn objects_by_type(tree: &BinTree, class_hash: TypeHash) -> impl Iterator<Item = &BinObject> {
-    tree.objects.values().filter(move |obj| obj.class_hash == class_hash)
+    tree.objects
+        .values()
+        .filter(move |obj| obj.class_hash == class_hash)
 }
 
 /// Get path_hash keys of objects matching a class hash.
@@ -39,5 +41,7 @@ pub fn object_keys_by_type(tree: &BinTree, class_hash: TypeHash) -> Vec<u32> {
 ///
 /// Used by `EntryTypeExistsAny` detection rule.
 pub fn has_any_type(tree: &BinTree, class_hashes: &[TypeHash]) -> bool {
-    tree.objects.values().any(|obj| class_hashes.contains(&obj.class_hash))
+    tree.objects
+        .values()
+        .any(|obj| class_hashes.contains(&obj.class_hash))
 }

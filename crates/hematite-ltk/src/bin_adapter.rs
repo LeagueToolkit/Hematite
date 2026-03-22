@@ -1,11 +1,11 @@
 //! BIN parsing adapter using ltk_meta.
 
-use std::io::Cursor;
-use anyhow::Result;
-use hematite_types::bin::BinTree;
-use hematite_core::traits::BinProvider;
-use league_toolkit::meta::Bin as LtkBin;
 use crate::convert::ltk_tree_to_hematite;
+use anyhow::Result;
+use hematite_core::traits::BinProvider;
+use hematite_types::bin::BinTree;
+use league_toolkit::meta::Bin as LtkBin;
+use std::io::Cursor;
 
 /// BIN provider backed by league-toolkit's ltk_meta.
 pub struct LtkBinProvider;
@@ -37,7 +37,8 @@ impl BinProvider for LtkBinProvider {
 
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        ltk_tree.to_writer(&mut cursor)
+        ltk_tree
+            .to_writer(&mut cursor)
             .map_err(|e| anyhow::anyhow!("Failed to write BIN: {:?}", e))?;
 
         Ok(buffer)
@@ -48,7 +49,7 @@ impl BinProvider for LtkBinProvider {
 mod tests {
     use super::*;
     use hematite_types::bin::{BinObject, BinProperty, PropertyValue};
-    use hematite_types::hash::{TypeHash, FieldHash, PathHash};
+    use hematite_types::hash::{FieldHash, PathHash, TypeHash};
     use indexmap::IndexMap;
 
     #[test]

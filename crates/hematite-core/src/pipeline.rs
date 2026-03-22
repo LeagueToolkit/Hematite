@@ -15,11 +15,11 @@
 //!         track result
 //! ```
 
-use hematite_types::config::{DetectionRule, FixConfig};
-use hematite_types::result::{AppliedFix, ProcessResult};
 use crate::context::FixContext;
 use crate::detect::detect_issue;
 use crate::transform::apply_transform;
+use hematite_types::config::{DetectionRule, FixConfig};
+use hematite_types::result::{AppliedFix, ProcessResult};
 
 /// Run selected fixes against a BIN tree.
 ///
@@ -37,7 +37,9 @@ pub fn apply_fixes(
 
     for fix_id in selected_fix_ids {
         let Some(fix_rule) = config.fixes.get(fix_id) else {
-            result.errors.push(format!("Fix rule not found: {}", fix_id));
+            result
+                .errors
+                .push(format!("Fix rule not found: {}", fix_id));
             continue;
         };
 
@@ -45,12 +47,7 @@ pub fn apply_fixes(
             continue;
         }
 
-        let detected = detect_issue(
-            &fix_rule.detect,
-            &ctx.tree,
-            ctx.hashes,
-            ctx.wad,
-        );
+        let detected = detect_issue(&fix_rule.detect, &ctx.tree, ctx.hashes, ctx.wad);
 
         if detected {
             if dry_run {
@@ -75,10 +72,9 @@ pub fn apply_fixes(
                     });
                 } else {
                     result.fixes_failed += 1;
-                    result.errors.push(format!(
-                        "Fix '{}' detected but no changes applied",
-                        fix_id
-                    ));
+                    result
+                        .errors
+                        .push(format!("Fix '{}' detected but no changes applied", fix_id));
                 }
             }
         }

@@ -168,9 +168,7 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
         {
             analysis.needs_fix = true;
             if let PropertyValue::Struct(eo_struct) = &field_prop.value {
-                if let Some(vec3) =
-                    extract_constant_value_vec3(eo_struct, hashes.constant_value)
-                {
+                if let Some(vec3) = extract_constant_value_vec3(eo_struct, hashes.constant_value) {
                     analysis.radius = vec3[0];
                     analysis.height = vec3[1];
                 }
@@ -197,8 +195,12 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
                     if let (PropertyValue::Vector3(v0), PropertyValue::Vector3(v1)) =
                         (&axes[0], &axes[1])
                     {
-                        if v0[1] == 1.0 && v0[0] == 0.0 && v0[2] == 0.0
-                            && v1[2] == 1.0 && v1[0] == 0.0 && v1[1] == 0.0
+                        if v0[1] == 1.0
+                            && v0[0] == 0.0
+                            && v0[2] == 0.0
+                            && v1[2] == 1.0
+                            && v1[0] == 0.0
+                            && v1[1] == 0.0
                         {
                             analysis.has_cylinder_pattern = true;
                         }
@@ -224,11 +226,7 @@ fn extract_constant_value_vec3(
     }
 }
 
-fn apply_shape_conversion(
-    shape: &mut StructValue,
-    analysis: &ShapeAnalysis,
-    hashes: &VfxHashes,
-) {
+fn apply_shape_conversion(shape: &mut StructValue, analysis: &ShapeAnalysis, hashes: &VfxHashes) {
     let target_type = if analysis.has_cylinder_pattern && analysis.radius != 0.0 {
         SHAPE_TYPE_CYLINDER
     } else if shape.properties.len() == 1 && analysis.radius != 0.0 {

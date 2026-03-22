@@ -31,8 +31,7 @@ impl ShaderValidator {
 
     /// Get the RitoShark hash directory path
     pub fn get_hash_dir() -> Result<PathBuf> {
-        let appdata = std::env::var("APPDATA")
-            .context("APPDATA environment variable not set")?;
+        let appdata = std::env::var("APPDATA").context("APPDATA environment variable not set")?;
         Ok(PathBuf::from(appdata)
             .join("RitoShark")
             .join("Requirements")
@@ -54,8 +53,9 @@ impl ShaderValidator {
             return Ok(Self::new());
         }
 
-        let file = File::open(&shader_file)
-            .with_context(|| format!("Failed to open shader hash file: {}", shader_file.display()))?;
+        let file = File::open(&shader_file).with_context(|| {
+            format!("Failed to open shader hash file: {}", shader_file.display())
+        })?;
         let reader = BufReader::new(file);
 
         let mut valid_shader_hashes = HashSet::new();
@@ -69,11 +69,12 @@ impl ShaderValidator {
             }
 
             // Format: "<hex_hash> <shader_path>" or just "<hex_hash>"
-            let hash_str = if let Some((hash_part, _)) = line.split_once(|c: char| c.is_whitespace()) {
-                hash_part
-            } else {
-                line
-            };
+            let hash_str =
+                if let Some((hash_part, _)) = line.split_once(|c: char| c.is_whitespace()) {
+                    hash_part
+                } else {
+                    line
+                };
 
             // Parse hex hash (with or without 0x prefix)
             let hash_str = hash_str.trim_start_matches("0x");

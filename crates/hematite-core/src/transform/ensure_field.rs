@@ -81,18 +81,21 @@ fn ensure_parent_embed(
         return 0;
     };
 
-    let parent_prop = obj.properties.entry(parent_hash.0).or_insert_with(|| {
-        BinProperty {
+    let parent_prop = obj
+        .properties
+        .entry(parent_hash.0)
+        .or_insert_with(|| BinProperty {
             name_hash: parent_hash,
             value: PropertyValue::Embedded(StructValue {
                 class_hash: embed_type_hash,
                 properties: Default::default(),
             }),
-        }
-    });
+        });
 
     // Accept both Embedded (correct for inline structs) and Struct (for pre-existing data)
-    if let PropertyValue::Embedded(ref mut struct_val) | PropertyValue::Struct(ref mut struct_val) = parent_prop.value {
+    if let PropertyValue::Embedded(ref mut struct_val) | PropertyValue::Struct(ref mut struct_val) =
+        parent_prop.value
+    {
         struct_val.properties.insert(
             field_hash,
             BinProperty {

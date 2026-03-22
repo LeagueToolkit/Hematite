@@ -19,9 +19,9 @@
 //! - [`transform`] — WAD-level actions (remove, convert, rename)
 //! - [`converters`] — File format converters registry
 
+pub mod converters;
 pub mod detect;
 pub mod transform;
-pub mod converters;
 
 use anyhow::Result;
 use hematite_types::config::{FixConfig, WadFixRule};
@@ -109,7 +109,11 @@ fn apply_single_fix(
                     output.files_to_remove.push(path.clone());
                     files_affected += 1;
                 }
-                transform::ActionResult::ConvertFile { from_ext, to_ext, converter } => {
+                transform::ActionResult::ConvertFile {
+                    from_ext,
+                    to_ext,
+                    converter,
+                } => {
                     output.files_to_convert.push(FileConversion {
                         path: path.clone(),
                         from_ext,

@@ -14,8 +14,7 @@ const VERSION_FILE: &str = "version.txt";
 
 /// Get the RitoShark hashes directory path.
 fn get_hashes_dir() -> Result<PathBuf> {
-    let appdata = std::env::var("APPDATA")
-        .context("APPDATA environment variable not set")?;
+    let appdata = std::env::var("APPDATA").context("APPDATA environment variable not set")?;
     Ok(PathBuf::from(appdata)
         .join("RitoShark")
         .join("Requirements")
@@ -48,7 +47,10 @@ struct Asset {
 
 /// Fetch the latest release info from GitHub.
 fn fetch_latest_release() -> Result<Release> {
-    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
+    let url = format!(
+        "https://api.github.com/repos/{}/releases/latest",
+        GITHUB_REPO
+    );
 
     tracing::debug!("Fetching latest release from: {}", url);
 
@@ -56,7 +58,8 @@ fn fetch_latest_release() -> Result<Release> {
         .user_agent("hematite-cli")
         .build()?;
 
-    let response = client.get(&url)
+    let response = client
+        .get(&url)
         .send()
         .context("Failed to fetch GitHub release")?;
 
@@ -64,7 +67,8 @@ fn fetch_latest_release() -> Result<Release> {
         anyhow::bail!("GitHub API returned status: {}", response.status());
     }
 
-    let release: Release = response.json()
+    let release: Release = response
+        .json()
         .context("Failed to parse GitHub release JSON")?;
 
     tracing::info!("Latest release: {}", release.tag_name);
@@ -81,8 +85,7 @@ fn read_installed_version() -> Option<String> {
 /// Write the installed version to disk.
 fn write_installed_version(version: &str) -> Result<()> {
     let version_path = get_version_path()?;
-    std::fs::write(version_path, version)
-        .context("Failed to write version file")?;
+    std::fs::write(version_path, version).context("Failed to write version file")?;
     Ok(())
 }
 
@@ -112,7 +115,11 @@ pub fn should_download() -> Result<bool> {
             Ok(false)
         }
         Some(installed) => {
-            tracing::info!("Hash database update available: {} -> {}", installed, release.tag_name);
+            tracing::info!(
+                "Hash database update available: {} -> {}",
+                installed,
+                release.tag_name
+            );
             Ok(true)
         }
         None => {
@@ -128,26 +135,31 @@ pub fn download_hashes() -> Result<()> {
 
     // Ensure directory exists
     let hashes_dir = get_hashes_dir()?;
-    std::fs::create_dir_all(&hashes_dir)
-        .context("Failed to create hashes directory")?;
+    std::fs::create_dir_all(&hashes_dir).context("Failed to create hashes directory")?;
 
     // Fetch release info
     let release = fetch_latest_release()?;
 
     // Find the combined asset
-    let asset = release.assets
+    let asset = release
+        .assets
         .iter()
         .find(|a| a.name == ASSET_NAME)
         .context(format!("Asset '{}' not found in release", ASSET_NAME))?;
 
-    tracing::info!("Downloading {} ({:.1} MB)", asset.name, asset.size as f64 / 1_000_000.0);
+    tracing::info!(
+        "Downloading {} ({:.1} MB)",
+        asset.name,
+        asset.size as f64 / 1_000_000.0
+    );
 
     // Download compressed file
     let client = reqwest::blocking::Client::builder()
         .user_agent("hematite-cli")
         .build()?;
 
-    let response = client.get(&asset.browser_download_url)
+    let response = client
+        .get(&asset.browser_download_url)
         .send()
         .context("Failed to download asset")?;
 
@@ -156,38 +168,41 @@ pub fn download_hashes() -> Result<()> {
     }
 
     // Read compressed data
-    let compressed_data = response.bytes()
-        .context("Failed to read download bytes")?;
+    let compressed_data = response.bytes().context("Failed to read download bytes")?;
 
     tracing::info!("Decompressing hash database...");
 
     // Decompress using zstd
-    let decompressed = zstd::decode_all(compressed_data.as_ref())
-        .context("Failed to decompress zstd data")?;
+    let decompressed =
+        zstd::decode_all(compressed_data.as_ref()).context("Failed to decompress zstd data")?;
 
-    tracing::info!("Decompressed size: {:.1} MB", decompressed.len() as f64 / 1_000_000.0);
+    tracing::info!(
+        "Decompressed size: {:.1} MB",
+        decompressed.len() as f64 / 1_000_000.0
+    );
 
     // LMDB databases are directories containing data.mdb
     // Create the directory structure
     let lmdb_dir = get_lmdb_path()?;
-    std::fs::create_dir_all(&lmdb_dir)
-        .context("Failed to create LMDB directory")?;
+    std::fs::create_dir_all(&lmdb_dir).context("Failed to create LMDB directory")?;
 
     // Write data.mdb inside the directory
     let data_mdb_path = lmdb_dir.join("data.mdb");
-    let mut file = BufWriter::new(File::create(&data_mdb_path)
-        .context("Failed to create data.mdb file")?);
+    let mut file =
+        BufWriter::new(File::create(&data_mdb_path).context("Failed to create data.mdb file")?);
 
     file.write_all(&decompressed)
         .context("Failed to write data.mdb file")?;
 
-    file.flush()
-        .context("Failed to flush data.mdb file")?;
+    file.flush().context("Failed to flush data.mdb file")?;
 
     // Write version tracking
     write_installed_version(&release.tag_name)?;
 
-    tracing::info!("Hash database installed successfully: {}", lmdb_dir.display());
+    tracing::info!(
+        "Hash database installed successfully: {}",
+        lmdb_dir.display()
+    );
     tracing::info!("Version: {}", release.tag_name);
 
     Ok(())

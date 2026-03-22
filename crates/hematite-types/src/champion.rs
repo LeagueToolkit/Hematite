@@ -6,8 +6,8 @@
 //! - Healthbar values for non-champion entities (turrets, monsters, etc.)
 //! - Reverse lookups: subchamp → primary champion
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Raw champion list data from champion_list.json.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,26 +49,24 @@ impl CharacterRelations {
 
         for (champion, subchamps) in &list.subchamps {
             let champion_lower = champion.to_lowercase();
-            relations.champion_to_subchamps.insert(
-                champion_lower.clone(),
-                subchamps.clone(),
-            );
+            relations
+                .champion_to_subchamps
+                .insert(champion_lower.clone(), subchamps.clone());
             for sub in subchamps {
-                relations.subchamp_to_champion.insert(
-                    sub.to_lowercase(),
-                    champion.clone(),
-                );
+                relations
+                    .subchamp_to_champion
+                    .insert(sub.to_lowercase(), champion.clone());
             }
         }
 
         for (name, value) in &list.healthbar_values {
-            relations.healthbar_values.insert(name.to_lowercase(), *value);
+            relations
+                .healthbar_values
+                .insert(name.to_lowercase(), *value);
         }
 
         // Normalize blacklists to lowercase
-        relations.blacklist = list.blacklist.iter()
-            .map(|s| s.to_lowercase())
-            .collect();
+        relations.blacklist = list.blacklist.iter().map(|s| s.to_lowercase()).collect();
 
         for (champion, blacklist) in &list.special_blacklists {
             relations.special_blacklists.insert(

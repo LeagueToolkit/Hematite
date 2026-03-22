@@ -7,8 +7,8 @@
 //! The schema is designed to be config-driven: new fixes can be added by
 //! editing JSON without changing Rust code (for simple detection/transform patterns).
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Root config structure loaded from fix_config.json.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,10 +54,7 @@ pub enum DetectionRule {
 
     /// A field hash exists at a dot-separated path (e.g. "SamplerValues.*.TextureName").
     #[serde(rename = "field_hash_exists")]
-    FieldHashExists {
-        entry_type: String,
-        path: String,
-    },
+    FieldHashExists { entry_type: String, path: String },
 
     /// Strings with a given extension that don't exist in the WAD cache.
     #[serde(rename = "string_extension_not_in_wad")]
@@ -77,21 +74,15 @@ pub enum DetectionRule {
 
     /// Any object in the BIN matches one of the given entry types.
     #[serde(rename = "entry_type_exists_any")]
-    EntryTypeExistsAny {
-        entry_types: Vec<String>,
-    },
+    EntryTypeExistsAny { entry_types: Vec<String> },
 
     /// BNK audio file version is not in the allowed list.
     #[serde(rename = "bnk_version_not_in")]
-    BnkVersionNotIn {
-        allowed_versions: Vec<u32>,
-    },
+    BnkVersionNotIn { allowed_versions: Vec<u32> },
 
     /// VFX shape data needs migration (post-patch 14.1 format change).
     #[serde(rename = "vfx_shape_needs_fix")]
-    VfxShapeNeedsFix {
-        entry_type: String,
-    },
+    VfxShapeNeedsFix { entry_type: String },
 }
 
 /// How to fix a detected issue.
@@ -110,17 +101,11 @@ pub enum TransformAction {
 
     /// Rename a field hash across the BIN tree.
     #[serde(rename = "rename_hash")]
-    RenameHash {
-        from_hash: String,
-        to_hash: String,
-    },
+    RenameHash { from_hash: String, to_hash: String },
 
     /// Replace file extension in all string values (e.g. .dds → .tex).
     #[serde(rename = "replace_string_extension")]
-    ReplaceStringExtension {
-        from: String,
-        to: String,
-    },
+    ReplaceStringExtension { from: String, to: String },
 
     /// Mark file for removal from WAD.
     #[serde(rename = "remove_from_wad")]

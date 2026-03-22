@@ -56,8 +56,8 @@ impl SkinDetector {
     /// Create a new skin detector
     pub fn new() -> Self {
         // Pattern to match skin numbers in various formats
-        let skin_pattern = Regex::new(r"(?i)skin(\d{1,2})")
-            .expect("BUG: hardcoded regex pattern is invalid");
+        let skin_pattern =
+            Regex::new(r"(?i)skin(\d{1,2})").expect("BUG: hardcoded regex pattern is invalid");
 
         Self { skin_pattern }
     }
@@ -79,10 +79,9 @@ impl SkinDetector {
     /// assert_eq!(detector.extract_skin_number("data/lux_base.bin"), None);
     /// ```
     pub fn extract_skin_number(&self, path: &str) -> Option<u32> {
-        self.skin_pattern.captures(path).and_then(|cap| {
-            cap.get(1)
-                .and_then(|m| m.as_str().parse::<u32>().ok())
-        })
+        self.skin_pattern
+            .captures(path)
+            .and_then(|cap| cap.get(1).and_then(|m| m.as_str().parse::<u32>().ok()))
     }
 
     /// Detect all available skins from a list of file paths
@@ -231,14 +230,8 @@ mod tests {
     fn test_extract_skin_number() {
         let detector = SkinDetector::new();
 
-        assert_eq!(
-            detector.extract_skin_number("data/lux_skin07.bin"),
-            Some(7)
-        );
-        assert_eq!(
-            detector.extract_skin_number("data/lux_skin00.bin"),
-            Some(0)
-        );
+        assert_eq!(detector.extract_skin_number("data/lux_skin07.bin"), Some(7));
+        assert_eq!(detector.extract_skin_number("data/lux_skin00.bin"), Some(0));
         assert_eq!(
             detector.extract_skin_number("data/lux_skin27.bin"),
             Some(27)
@@ -329,10 +322,7 @@ mod tests {
     fn test_case_insensitivity() {
         let detector = SkinDetector::new();
 
-        assert_eq!(
-            detector.extract_skin_number("DATA/LUX_SKIN07.BIN"),
-            Some(7)
-        );
+        assert_eq!(detector.extract_skin_number("DATA/LUX_SKIN07.BIN"), Some(7));
         assert_eq!(detector.extract_skin_number("Data/Lux_Skin07.bin"), Some(7));
     }
 
@@ -362,10 +352,7 @@ mod tests {
         let detector = SkinDetector::new();
 
         // Test paths with single digit (no zero padding)
-        assert_eq!(
-            detector.extract_skin_number("data/lux_skin7.bin"),
-            Some(7)
-        );
+        assert_eq!(detector.extract_skin_number("data/lux_skin7.bin"), Some(7));
         assert_eq!(
             detector.extract_skin_number("data/characters/ahri/skins/skin9.bin"),
             Some(9)

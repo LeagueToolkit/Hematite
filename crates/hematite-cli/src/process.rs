@@ -8,11 +8,8 @@ use hematite_core::pipeline::apply_fixes;
 use hematite_core::traits::{BinProvider, HashProvider};
 use hematite_core::wad_pipeline::converters::ConverterRegistry;
 use hematite_ltk::{
-    bin_adapter::LtkBinProvider,
-    hash_adapter::TxtHashProvider,
-    lmdb_hash_adapter::LmdbHashProvider,
-    texture_converter,
-    mesh_converter,
+    bin_adapter::LtkBinProvider, hash_adapter::TxtHashProvider,
+    lmdb_hash_adapter::LmdbHashProvider, mesh_converter, texture_converter,
 };
 use hematite_types::champion::CharacterRelations;
 use hematite_types::config::FixConfig;
@@ -93,12 +90,14 @@ pub fn process_input(
 
 /// Check if a file is a supported type.
 fn is_supported_file(path: &Path) -> bool {
-    let ext = path.extension()
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
 
-    let file_name = path.file_name()
+    let file_name = path
+        .file_name()
         .and_then(|n| n.to_str())
         .map(|n| n.to_lowercase())
         .unwrap_or_default();
@@ -115,22 +114,45 @@ fn process_file_with_hashes(
     dry_run: bool,
     hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
-    let ext = file.extension()
+    let ext = file
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
 
-    let file_name = file.file_name()
+    let file_name = file
+        .file_name()
         .and_then(|n| n.to_str())
         .map(|n| n.to_lowercase())
         .unwrap_or_default();
 
     if ext == "bin" {
-        process_bin_file(file, config, selected_fixes, champions, dry_run, hash_provider)
+        process_bin_file(
+            file,
+            config,
+            selected_fixes,
+            champions,
+            dry_run,
+            hash_provider,
+        )
     } else if file_name.ends_with(".wad.client") {
-        process_wad_file(file, config, selected_fixes, champions, dry_run, hash_provider)
+        process_wad_file(
+            file,
+            config,
+            selected_fixes,
+            champions,
+            dry_run,
+            hash_provider,
+        )
     } else if ext == "fantome" || ext == "zip" {
-        process_fantome_file(file, config, selected_fixes, champions, dry_run, hash_provider)
+        process_fantome_file(
+            file,
+            config,
+            selected_fixes,
+            champions,
+            dry_run,
+            hash_provider,
+        )
     } else {
         anyhow::bail!("Unsupported file type: {}", file.display());
     }
@@ -151,16 +173,20 @@ fn process_bin_file(
     let bin_provider = LtkBinProvider;
 
     // Read BIN file
-    let bytes = std::fs::read(file)
-        .context("Failed to read BIN file")?;
-    let tree = bin_provider.parse_bytes(&bytes)
+    let bytes = std::fs::read(file).context("Failed to read BIN file")?;
+    let tree = bin_provider
+        .parse_bytes(&bytes)
         .context("Failed to parse BIN file")?;
 
     // Standalone BIN has no WAD context
     struct NullWadProvider;
     impl hematite_core::traits::WadProvider for NullWadProvider {
-        fn has_path(&self, _path: &str) -> bool { false }
-        fn has_hash(&self, _hash: u64) -> bool { false }
+        fn has_path(&self, _path: &str) -> bool {
+            false
+        }
+        fn has_hash(&self, _hash: u64) -> bool {
+            false
+        }
     }
     let null_wad = NullWadProvider;
 
@@ -179,7 +205,8 @@ fn process_bin_file(
 
     // Write back if changes were made and not dry-run
     if !dry_run && result.fixes_applied > 0 {
-        let modified_bytes = bin_provider.write_bytes(&ctx.tree)
+        let modified_bytes = bin_provider
+            .write_bytes(&ctx.tree)
             .context("Failed to write modified BIN file")?;
 
         // Write to output file (original.bin → original.fixed.bin)
@@ -188,7 +215,11 @@ fn process_bin_file(
             .context("Failed to save modified BIN file")?;
 
         tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
-        tracing::info!("  {} fixes applied, {} bytes written", result.fixes_applied, modified_bytes.len());
+        tracing::info!(
+            "  {} fixes applied, {} bytes written",
+            result.fixes_applied,
+            modified_bytes.len()
+        );
     }
 
     Ok(result)
@@ -206,28 +237,33 @@ fn process_wad_file(
     dry_run: bool,
     hash_provider: &Arc<dyn HashProvider>,
 ) -> Result<ProcessResult> {
-    use hematite_ltk::wad_adapter::WadFile;
     use hematite_core::wad_pipeline;
+    use hematite_ltk::wad_adapter::WadFile;
 
     tracing::info!("Processing WAD: {}", file.display());
 
     let bin_provider = LtkBinProvider;
 
-    let mut wad_file = WadFile::open(file)
-        .context("Failed to open WAD file")?;
+    let mut wad_file = WadFile::open(file).context("Failed to open WAD file")?;
 
     let wad_provider = wad_file.build_provider();
 
     // Extract all files for WAD-level pipeline (mutable for conversions)
-    let mut all_files = wad_file.extract_all_files(hash_provider.as_ref())
+    let mut all_files = wad_file
+        .extract_all_files(hash_provider.as_ref())
         .context("Failed to extract files from WAD")?;
 
-    let bin_chunks: Vec<_> = all_files.iter()
+    let bin_chunks: Vec<_> = all_files
+        .iter()
         .filter(|(path, _)| path.to_lowercase().ends_with(".bin"))
         .cloned()
         .collect();
 
-    tracing::info!("WAD has {} total entries, {} BIN files", wad_provider.hash_count(), bin_chunks.len());
+    tracing::info!(
+        "WAD has {} total entries, {} BIN files",
+        wad_provider.hash_count(),
+        bin_chunks.len()
+    );
 
     let mut total_result = ProcessResult::default();
     let mut shared_files_to_remove = Vec::new();
@@ -242,7 +278,11 @@ fn process_wad_file(
 
     // Track WAD-level fixes applied
     for wad_fix in &wad_output.applied_fixes {
-        tracing::info!("WAD-level fix '{}' affected {} files", wad_fix.fix_name, wad_fix.files_affected);
+        tracing::info!(
+            "WAD-level fix '{}' affected {} files",
+            wad_fix.fix_name,
+            wad_fix.files_affected
+        );
         total_result.fixes_applied += wad_fix.files_affected;
     }
 
@@ -254,7 +294,10 @@ fn process_wad_file(
 
     let mut conversion_count = 0u32;
     if !wad_output.files_to_convert.is_empty() {
-        tracing::info!("Converting {} file formats...", wad_output.files_to_convert.len());
+        tracing::info!(
+            "Converting {} file formats...",
+            wad_output.files_to_convert.len()
+        );
 
         for conversion in &wad_output.files_to_convert {
             // Find the file in all_files
@@ -346,8 +389,8 @@ fn process_wad_file(
     // Write modified WAD if any changes were made and not dry-run
     if !dry_run && (total_result.fixes_applied > 0 || !shared_files_to_remove.is_empty()) {
         use league_toolkit::wad::{WadBuilder, WadChunkBuilder};
-        use xxhash_rust::xxh64::xxh64;
         use std::io::Write;
+        use xxhash_rust::xxh64::xxh64;
 
         tracing::info!("Building modified WAD...");
 
@@ -364,16 +407,19 @@ fn process_wad_file(
         }
 
         let output_path = file.with_extension("fixed.wad.client");
-        let mut output_file = std::fs::File::create(&output_path)
-            .context("Failed to create output WAD file")?;
+        let mut output_file =
+            std::fs::File::create(&output_path).context("Failed to create output WAD file")?;
 
         builder.build_to_writer(&mut output_file, |path_hash, cursor| {
-            let (path, bytes) = all_files.iter()
+            let (path, bytes) = all_files
+                .iter()
                 .find(|(p, _)| xxh64(p.to_lowercase().as_bytes(), 0) == path_hash)
-                .ok_or_else(|| std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("Missing file for hash {:016X}", path_hash)
-                ))?;
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Missing file for hash {:016X}", path_hash),
+                    )
+                })?;
 
             tracing::trace!("Writing chunk: {} ({} bytes)", path, bytes.len());
             cursor.write_all(bytes)?;
@@ -381,7 +427,11 @@ fn process_wad_file(
         })?;
 
         tracing::info!("✓ Wrote fixed WAD to: {}", output_path.display());
-        tracing::info!("  {} chunks included, {} files removed", chunks_included, shared_files_to_remove.len());
+        tracing::info!(
+            "  {} chunks included, {} files removed",
+            chunks_included,
+            shared_files_to_remove.len()
+        );
         tracing::info!("  {} total fixes applied", total_result.fixes_applied);
     } else if !dry_run {
         tracing::info!("No changes detected - WAD not modified");
@@ -403,14 +453,12 @@ fn process_fantome_file(
 ) -> Result<ProcessResult> {
     tracing::info!("Processing Fantome: {}", file.display());
 
-    let zip_file = std::fs::File::open(file)
-        .context("Failed to open fantome/zip file")?;
+    let zip_file = std::fs::File::open(file).context("Failed to open fantome/zip file")?;
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(zip_file))
         .context("Failed to read ZIP archive")?;
 
     // Extract .wad.client files to temp dir
-    let temp_dir = tempfile::tempdir()
-        .context("Failed to create temp directory")?;
+    let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
 
     // SECURITY: Limits to prevent DoS attacks (ZIP bombs, memory exhaustion)
     const MAX_ENTRIES: usize = 1000;
@@ -428,8 +476,7 @@ fn process_fantome_file(
     let mut total_extracted_size: u64 = 0;
     let mut wad_paths = Vec::new();
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
-            .context("Failed to read ZIP entry")?;
+        let mut entry = archive.by_index(i).context("Failed to read ZIP entry")?;
 
         let name = entry.name().to_lowercase();
         if name.ends_with(".wad.client") {
@@ -438,13 +485,20 @@ fn process_fantome_file(
 
             // Check for path traversal patterns
             if entry_name.contains("..") || std::path::Path::new(entry_name).is_absolute() {
-                anyhow::bail!("Invalid ZIP entry path (potential path traversal): {}", entry_name);
+                anyhow::bail!(
+                    "Invalid ZIP entry path (potential path traversal): {}",
+                    entry_name
+                );
             }
 
             // Additional check: ensure no path component is exactly ".."
-            if entry_name.split('/').any(|component| component == "..") ||
-               entry_name.split('\\').any(|component| component == "..") {
-                anyhow::bail!("Invalid ZIP entry path (contains .. component): {}", entry_name);
+            if entry_name.split('/').any(|component| component == "..")
+                || entry_name.split('\\').any(|component| component == "..")
+            {
+                anyhow::bail!(
+                    "Invalid ZIP entry path (contains .. component): {}",
+                    entry_name
+                );
             }
 
             // SECURITY: Check uncompressed size before extraction
@@ -488,7 +542,14 @@ fn process_fantome_file(
 
     let mut total_result = ProcessResult::default();
     for wad_path in &wad_paths {
-        let result = process_wad_file(wad_path, config, selected_fixes, champions, dry_run, hash_provider)?;
+        let result = process_wad_file(
+            wad_path,
+            config,
+            selected_fixes,
+            champions,
+            dry_run,
+            hash_provider,
+        )?;
         total_result.merge(result);
     }
 

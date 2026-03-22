@@ -11,8 +11,8 @@
 //! ## Old code: ~100 LOC recursive walk. New code: ~25 LOC visitor impl.
 
 use crate::context::FixContext;
-use crate::walk::{PropertyVisitor, VisitResult, walk_tree};
 use crate::strings::replace_extension;
+use crate::walk::{walk_tree, PropertyVisitor, VisitResult};
 use hematite_types::hash::FieldHash;
 
 struct ExtensionReplacer<'a> {

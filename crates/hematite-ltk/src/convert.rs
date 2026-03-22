@@ -2,17 +2,15 @@
 //!
 //! When LTK changes its API, only this file needs updating.
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
+use hematite_types::bin::{BinObject, BinProperty, BinTree, PropertyValue, StructValue};
+use hematite_types::hash::{FieldHash, PathHash, TypeHash};
 use indexmap::IndexMap;
-use hematite_types::bin::{BinTree, BinObject, BinProperty, PropertyValue, StructValue};
-use hematite_types::hash::{TypeHash, FieldHash, PathHash};
-use league_toolkit::meta::{
-    Bin as LtkBin,
-    BinObject as LtkBinObject,
-    PropertyValueEnum as LtkValue,
-    BinProperty as LtkBinProperty,
-};
 use league_toolkit::meta::property::{values::*, NoMeta};
+use league_toolkit::meta::{
+    Bin as LtkBin, BinObject as LtkBinObject, BinProperty as LtkBinProperty,
+    PropertyValueEnum as LtkValue,
+};
 
 /// Convert LTK Bin to Hematite BinTree (after parsing).
 pub fn ltk_tree_to_hematite(ltk_tree: LtkBin) -> Result<BinTree> {
@@ -103,8 +101,9 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
         LtkValue::String(v) => PropertyValue::String(v.value.clone()),
         LtkValue::Hash(v) => PropertyValue::Hash(v.value),
         LtkValue::WadChunkLink(v) => PropertyValue::Link(
-            v.value.try_into()
-                .map_err(|_| anyhow::anyhow!("WadChunkLink value {} exceeds u32::MAX", v.value))?
+            v.value
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("WadChunkLink value {} exceeds u32::MAX", v.value))?,
         ),
         LtkValue::ObjectLink(v) => PropertyValue::Link(v.value),
         LtkValue::Color(v) => PropertyValue::Color([v.value.r, v.value.g, v.value.b, v.value.a]),
@@ -112,27 +111,21 @@ pub fn ltk_value_to_hematite(ltk_val: &LtkValue) -> Result<PropertyValue> {
         LtkValue::None(_) => bail!("None value encountered in BIN"),
 
         // Nested structures
-        LtkValue::Struct(s) => {
-            PropertyValue::Struct(ltk_struct_to_hematite(s)?)
-        }
+        LtkValue::Struct(s) => PropertyValue::Struct(ltk_struct_to_hematite(s)?),
         LtkValue::Embedded(e) => {
             // Embedded wraps Struct via .0
             PropertyValue::Embedded(ltk_struct_to_hematite(&e.0)?)
         }
 
         // Collections
-        LtkValue::Container(c) => {
-            PropertyValue::Container(ltk_container_to_vec(c)?)
-        }
+        LtkValue::Container(c) => PropertyValue::Container(ltk_container_to_vec(c)?),
         LtkValue::UnorderedContainer(uc) => {
             // UnorderedContainer wraps Container via .0
             PropertyValue::UnorderedContainer(ltk_container_to_vec(&uc.0)?)
         }
 
         // Optional
-        LtkValue::Optional(o) => {
-            PropertyValue::Optional(Box::new(ltk_optional_to_option(o)?))
-        }
+        LtkValue::Optional(o) => PropertyValue::Optional(Box::new(ltk_optional_to_option(o)?)),
 
         // Map
         LtkValue::Map(m) => {
@@ -168,7 +161,9 @@ pub fn hematite_value_to_ltk(val: &PropertyValue) -> Result<LtkValue> {
         PropertyValue::Vector4(v) => LtkValue::Vector4(Vector4::new((*v).into())),
 
         // Matrix - convert 2D array to glam Mat4
-        PropertyValue::Matrix4x4(v) => LtkValue::Matrix44(Matrix44::new(glam::Mat4::from_cols_array_2d(v))),
+        PropertyValue::Matrix4x4(v) => {
+            LtkValue::Matrix44(Matrix44::new(glam::Mat4::from_cols_array_2d(v)))
+        }
 
         // Strings & hashes
         PropertyValue::String(v) => LtkValue::String(String::new(v.clone())),
@@ -203,7 +198,10 @@ pub fn hematite_value_to_ltk(val: &PropertyValue) -> Result<LtkValue> {
         PropertyValue::Map(pairs) => {
             if pairs.is_empty() {
                 // Empty map - default to U32->U32
-                LtkValue::Map(Map::empty(league_toolkit::meta::property::Kind::U32, league_toolkit::meta::property::Kind::U32))
+                LtkValue::Map(Map::empty(
+                    league_toolkit::meta::property::Kind::U32,
+                    league_toolkit::meta::property::Kind::U32,
+                ))
             } else {
                 let key_kind = hematite_value_to_ltk(&pairs[0].0)?.kind();
                 let value_kind = hematite_value_to_ltk(&pairs[0].1)?.kind();
@@ -571,7 +569,6 @@ fn vec_to_ltk_container(items: &[PropertyValue]) -> Result<LtkValue> {
     Ok(LtkValue::Container(container))
 }
 
-
 /// Convert LTK Optional enum to Option<PropertyValue>.
 fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
     let opt = match o {
@@ -586,11 +583,21 @@ fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
         Optional::I64(v) => v.as_ref().map(|inner| PropertyValue::I64(inner.value)),
         Optional::U64(v) => v.as_ref().map(|inner| PropertyValue::U64(inner.value)),
         Optional::F32(v) => v.as_ref().map(|inner| PropertyValue::F32(inner.value)),
-        Optional::Vector2(v) => v.as_ref().map(|inner| PropertyValue::Vector2(inner.value.to_array())),
-        Optional::Vector3(v) => v.as_ref().map(|inner| PropertyValue::Vector3(inner.value.to_array())),
-        Optional::Vector4(v) => v.as_ref().map(|inner| PropertyValue::Vector4(inner.value.to_array())),
-        Optional::Matrix44(v) => v.as_ref().map(|inner| PropertyValue::Matrix4x4(inner.value.to_cols_array_2d())),
-        Optional::String(v) => v.as_ref().map(|inner| PropertyValue::String(inner.value.clone())),
+        Optional::Vector2(v) => v
+            .as_ref()
+            .map(|inner| PropertyValue::Vector2(inner.value.to_array())),
+        Optional::Vector3(v) => v
+            .as_ref()
+            .map(|inner| PropertyValue::Vector3(inner.value.to_array())),
+        Optional::Vector4(v) => v
+            .as_ref()
+            .map(|inner| PropertyValue::Vector4(inner.value.to_array())),
+        Optional::Matrix44(v) => v
+            .as_ref()
+            .map(|inner| PropertyValue::Matrix4x4(inner.value.to_cols_array_2d())),
+        Optional::String(v) => v
+            .as_ref()
+            .map(|inner| PropertyValue::String(inner.value.clone())),
         Optional::Hash(v) => v.as_ref().map(|inner| PropertyValue::Hash(inner.value)),
         Optional::Struct(v) => match v {
             Some(s) => Some(PropertyValue::Struct(ltk_struct_to_hematite(s)?)),
@@ -600,16 +607,19 @@ fn ltk_optional_to_option(o: &Optional) -> Result<Option<PropertyValue>> {
             Some(e) => Some(PropertyValue::Embedded(ltk_struct_to_hematite(&e.0)?)),
             None => None,
         },
-        Optional::Color(v) => v.as_ref().map(|inner| PropertyValue::Color([inner.value.r, inner.value.g, inner.value.b, inner.value.a])),
+        Optional::Color(v) => v.as_ref().map(|inner| {
+            PropertyValue::Color([inner.value.r, inner.value.g, inner.value.b, inner.value.a])
+        }),
         Optional::WadChunkLink(v) => match v {
-            Some(inner) => Some(PropertyValue::Link(
-                inner.value.try_into()
-                    .map_err(|_| anyhow::anyhow!("WadChunkLink value {} exceeds u32::MAX", inner.value))?
-            )),
+            Some(inner) => Some(PropertyValue::Link(inner.value.try_into().map_err(
+                |_| anyhow::anyhow!("WadChunkLink value {} exceeds u32::MAX", inner.value),
+            )?)),
             None => None,
         },
         Optional::ObjectLink(v) => v.as_ref().map(|inner| PropertyValue::Link(inner.value)),
-        Optional::BitBool(v) => v.as_ref().map(|inner| PropertyValue::BitBool(if inner.value { 1 } else { 0 })),
+        Optional::BitBool(v) => v
+            .as_ref()
+            .map(|inner| PropertyValue::BitBool(if inner.value { 1 } else { 0 })),
     };
 
     Ok(opt)
@@ -630,26 +640,41 @@ fn option_to_ltk_optional(opt: &Option<PropertyValue>) -> Result<LtkValue> {
             PropertyValue::I64(v) => LtkValue::Optional(Optional::from(I64::new(*v))),
             PropertyValue::U64(v) => LtkValue::Optional(Optional::from(U64::new(*v))),
             PropertyValue::F32(v) => LtkValue::Optional(Optional::from(F32::new(*v))),
-            PropertyValue::Vector2(v) => LtkValue::Optional(Optional::from(Vector2::new((*v).into()))),
-            PropertyValue::Vector3(v) => LtkValue::Optional(Optional::from(Vector3::new((*v).into()))),
-            PropertyValue::Vector4(v) => LtkValue::Optional(Optional::from(Vector4::new((*v).into()))),
-            PropertyValue::Matrix4x4(v) => LtkValue::Optional(Optional::from(Matrix44::new(glam::Mat4::from_cols_array_2d(v)))),
+            PropertyValue::Vector2(v) => {
+                LtkValue::Optional(Optional::from(Vector2::new((*v).into())))
+            }
+            PropertyValue::Vector3(v) => {
+                LtkValue::Optional(Optional::from(Vector3::new((*v).into())))
+            }
+            PropertyValue::Vector4(v) => {
+                LtkValue::Optional(Optional::from(Vector4::new((*v).into())))
+            }
+            PropertyValue::Matrix4x4(v) => LtkValue::Optional(Optional::from(Matrix44::new(
+                glam::Mat4::from_cols_array_2d(v),
+            ))),
             PropertyValue::String(v) => LtkValue::Optional(Optional::from(String::new(v.clone()))),
-            PropertyValue::Hash(v) | PropertyValue::Link(v) => LtkValue::Optional(Optional::from(Hash::new(*v))),
+            PropertyValue::Hash(v) | PropertyValue::Link(v) => {
+                LtkValue::Optional(Optional::from(Hash::new(*v)))
+            }
             PropertyValue::WadHash(v) => LtkValue::Optional(Optional::from(WadChunkLink::new(*v))),
-            PropertyValue::Color(rgba) => LtkValue::Optional(Optional::from(Color::new(ltk_primitives::Color {
-                r: rgba[0],
-                g: rgba[1],
-                b: rgba[2],
-                a: rgba[3],
-            }))),
+            PropertyValue::Color(rgba) => {
+                LtkValue::Optional(Optional::from(Color::new(ltk_primitives::Color {
+                    r: rgba[0],
+                    g: rgba[1],
+                    b: rgba[2],
+                    a: rgba[3],
+                })))
+            }
             PropertyValue::BitBool(v) => LtkValue::Optional(Optional::from(BitBool::new(*v != 0))),
-            PropertyValue::Struct(s) => LtkValue::Optional(Optional::from(hematite_struct_to_ltk(s)?)),
-            PropertyValue::Embedded(s) => LtkValue::Optional(Optional::from(Embedded(hematite_struct_to_ltk(s)?))),
+            PropertyValue::Struct(s) => {
+                LtkValue::Optional(Optional::from(hematite_struct_to_ltk(s)?))
+            }
+            PropertyValue::Embedded(s) => {
+                LtkValue::Optional(Optional::from(Embedded(hematite_struct_to_ltk(s)?)))
+            }
             _ => bail!("Unsupported optional type"),
-        }
+        },
     };
 
     Ok(ltk_opt)
 }
-

@@ -162,10 +162,7 @@ pub struct FallbackStats {
 
 /// Extract file extension from a path (lowercase).
 fn extract_extension(path: &str) -> String {
-    path.rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase()
+    path.rsplit('.').next().unwrap_or("").to_lowercase()
 }
 
 #[cfg(test)]

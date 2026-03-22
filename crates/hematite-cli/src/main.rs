@@ -46,10 +46,7 @@ fn main() -> Result<()> {
 
     // Log session start (unless in JSON mode)
     if !cli.json {
-        logging::log_session_start(
-            &cli.input.to_string_lossy(),
-            &selected_fixes,
-        );
+        logging::log_session_start(&cli.input.to_string_lossy(), &selected_fixes);
     }
 
     // Process input

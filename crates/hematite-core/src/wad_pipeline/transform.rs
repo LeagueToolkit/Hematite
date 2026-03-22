@@ -29,18 +29,27 @@ pub fn apply_action(
     match action {
         WadTransformAction::RemoveFile => Ok(ActionResult::RemoveFile),
 
-        WadTransformAction::ConvertFormat { from_ext, to_ext, converter } => {
-            Ok(ActionResult::ConvertFile {
-                from_ext: from_ext.clone(),
-                to_ext: to_ext.clone(),
-                converter: converter.clone(),
-            })
-        }
+        WadTransformAction::ConvertFormat {
+            from_ext,
+            to_ext,
+            converter,
+        } => Ok(ActionResult::ConvertFile {
+            from_ext: from_ext.clone(),
+            to_ext: to_ext.clone(),
+            converter: converter.clone(),
+        }),
 
-        WadTransformAction::RenameFile { pattern, replacement } => {
+        WadTransformAction::RenameFile {
+            pattern,
+            replacement,
+        } => {
             let regex = regex::Regex::new(pattern)?;
 
-            if let Some(new_path) = regex.replace(path, replacement.as_str()).into_owned().into() {
+            if let Some(new_path) = regex
+                .replace(path, replacement.as_str())
+                .into_owned()
+                .into()
+            {
                 if new_path != path {
                     return Ok(ActionResult::RenameFile { new_path });
                 }

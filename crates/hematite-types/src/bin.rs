@@ -11,8 +11,8 @@
 //! - [`BinProperty`] — A named property (field_hash + value)
 //! - [`PropertyValue`] — The value of a property (enum over all League types)
 
+use crate::hash::{FieldHash, PathHash, TypeHash};
 use indexmap::IndexMap;
-use crate::hash::{TypeHash, FieldHash, PathHash};
 
 /// A parsed BIN file — a map of entry path hashes to objects.
 #[derive(Debug, Clone, Default)]
@@ -42,10 +42,7 @@ pub struct BinProperty {
 
 /// All possible property value types in a BIN file.
 ///
-/// This enum must be kept in sync with LTK's `PropertyValueEnum`.
-/// The conversion happens in `hematite-ltk/src/convert.rs`.
-///
-/// All variants match LTK's PropertyValueEnum. The conversion between
+/// Mirrors LTK's `PropertyValueEnum`. The conversion between
 /// LTK and Hematite types happens in `hematite-ltk/src/convert.rs`.
 #[derive(Debug, Clone)]
 pub enum PropertyValue {
