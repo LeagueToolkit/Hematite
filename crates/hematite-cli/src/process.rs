@@ -59,21 +59,50 @@ pub fn process_input(
     let mut total_result = ProcessResult::default();
 
     if input.is_dir() {
-        for entry in WalkDir::new(input) {
-            let entry = entry.context("Failed to read directory entry")?;
-            let path = entry.path();
+        // Collect all files first to show progress
+        let files: Vec<_> = WalkDir::new(input)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file() && is_supported_file(e.path()))
+            .map(|e| e.path().to_path_buf())
+            .collect();
 
-            if path.is_file() && is_supported_file(path) {
-                let result = process_file_with_hashes(
-                    path,
-                    config,
-                    selected_fixes,
-                    champions,
-                    dry_run,
-                    &hash_provider,
-                    check,
-                )?;
-                total_result.merge(result);
+        if files.is_empty() {
+            tracing::warn!("No supported files found in directory");
+            return Ok(total_result);
+        }
+
+        // Log batch processing start
+        crate::logging::log_batch_start(files.len());
+
+        // Process each file with progress
+        for (index, path) in files.iter().enumerate() {
+            crate::logging::log_file_progress(index + 1, files.len(), &path.display().to_string());
+
+            match process_file_with_hashes(
+                path,
+                config,
+                selected_fixes,
+                champions,
+                dry_run,
+                &hash_provider,
+                check,
+            ) {
+                Ok(result) => {
+                    let fixes_applied = result.fixes_applied;
+                    let success = result.errors.is_empty();
+                    total_result.merge(result);
+                    crate::logging::log_file_complete(
+                        &path.display().to_string(),
+                        fixes_applied,
+                        success,
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process {}: {}", path.display(), e);
+                    total_result.errors.push(format!("{}: {}", path.display(), e));
+                    crate::logging::log_file_complete(&path.display().to_string(), 0, false);
+                }
             }
         }
     } else {
@@ -244,7 +273,7 @@ fn process_bin_file(
         std::fs::write(&output_path, &modified_bytes)
             .context("Failed to save modified BIN file")?;
 
-        tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
+        tracing::info!("=> Wrote fixed BIN to: {}", output_path.display());
         tracing::info!(
             "  {} fixes applied, {} bytes written",
             result.fixes_applied,
@@ -339,7 +368,7 @@ fn process_wad_file(
                         *bytes = converted_bytes;
                         conversion_count += 1;
                         tracing::info!(
-                            "✓ Converted {} from .{} to .{} ({} → {} bytes)",
+                            "=> Converted {} from .{} to .{} ({} -> {} bytes)",
                             conversion.path,
                             conversion.from_ext,
                             conversion.to_ext,
@@ -349,7 +378,7 @@ fn process_wad_file(
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "✗ Converter '{}' failed for {}: {}",
+                            "X Converter '{}' failed for {}: {}",
                             conversion.converter,
                             conversion.path,
                             e
@@ -547,7 +576,7 @@ fn process_wad_file(
             Ok(())
         })?;
 
-        tracing::info!("✓ Wrote fixed WAD to: {}", output_path.display());
+        tracing::info!("=> Wrote fixed WAD to: {}", output_path.display());
         tracing::info!(
             "  {} chunks included, {} files removed",
             chunks_included,

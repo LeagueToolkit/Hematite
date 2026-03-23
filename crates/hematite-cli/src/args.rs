@@ -26,9 +26,16 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "hematite-cli")]
 #[command(about = "League of Legends custom skin fixer")]
+#[command(
+    long_about = "League of Legends custom skin fixer\n\n\
+                  Automatically detects and fixes common issues in custom skins.\n\
+                  Supports .bin, .wad.client, .fantome, and .zip files.\n\n\
+                  By default, all fixes are applied automatically when no specific flags are provided.\n\
+                  Drag and drop files or folders to process multiple skins at once."
+)]
 #[command(version)]
 pub struct Cli {
-    /// Input file or directory to process
+    /// Input file or directory to process (.bin, .wad.client, .fantome, .zip, or folder)
     pub input: PathBuf,
 
     /// Output path (default: overwrite input)
