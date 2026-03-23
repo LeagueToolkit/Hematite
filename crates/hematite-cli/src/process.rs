@@ -692,6 +692,8 @@ fn process_fantome_file(
     tracing::info!("Found {} WAD file(s) in archive", wad_paths.len());
 
     let mut total_result = ProcessResult::default();
+    let mut fixed_wad_paths = Vec::new();
+
     for wad_path in &wad_paths {
         let result = process_wad_file(
             wad_path,
@@ -702,8 +704,104 @@ fn process_fantome_file(
             hash_provider,
             check,
         )?;
+
+        // Track the fixed WAD path (original.wad.client -> original.fixed.wad.client)
+        let has_fixes = result.fixes_applied > 0;
         total_result.merge(result);
+
+        if !dry_run && has_fixes {
+            let fixed_path = wad_path.with_extension("fixed.wad.client");
+            if fixed_path.exists() {
+                fixed_wad_paths.push((wad_path.clone(), fixed_path));
+            }
+        }
+    }
+
+    // Rebuild the fantome/zip archive with fixed WAD files
+    if !dry_run && !fixed_wad_paths.is_empty() && !check {
+        rebuild_fantome_archive(file, &temp_dir, &fixed_wad_paths)?;
+        tracing::info!(
+            "=> Rebuilt fantome with {} fixed WAD file(s)",
+            fixed_wad_paths.len()
+        );
     }
 
     Ok(total_result)
+}
+
+/// Rebuild a fantome/zip archive, replacing WAD files with their fixed versions.
+fn rebuild_fantome_archive(
+    original_file: &Path,
+    _temp_dir: &tempfile::TempDir,
+    fixed_wads: &[(std::path::PathBuf, std::path::PathBuf)],
+) -> Result<()> {
+    use std::io::{Read, Write};
+
+    // Read the original archive to copy non-WAD files
+    let original_zip = std::fs::File::open(original_file)?;
+    let mut original_archive = zip::ZipArchive::new(std::io::BufReader::new(original_zip))?;
+
+    // Create output path: original.fantome -> original.fixed.fantome
+    let output_path = if original_file.extension().and_then(|e| e.to_str()) == Some("fantome") {
+        original_file.with_extension("fixed.fantome")
+    } else {
+        original_file.with_extension("fixed.zip")
+    };
+
+    let output_file = std::fs::File::create(&output_path)?;
+    let mut output_archive = zip::ZipWriter::new(output_file);
+
+    // Create a map of original WAD paths to fixed WAD paths
+    let fixed_map: std::collections::HashMap<String, &std::path::Path> = fixed_wads
+        .iter()
+        .map(|(orig, fixed)| {
+            (
+                orig.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+                    .replace(".wad.client", "")
+                    + ".wad.client",
+                fixed.as_path(),
+            )
+        })
+        .collect();
+
+    // Copy all files from original archive, replacing WADs with fixed versions
+    for i in 0..original_archive.len() {
+        let mut entry = original_archive.by_index(i)?;
+        let entry_name = entry.name().to_string();
+
+        // Use same compression method as original
+        let options = zip::write::FileOptions::default()
+            .compression_method(entry.compression())
+            .unix_permissions(entry.unix_mode().unwrap_or(0o644));
+
+        output_archive.start_file(&entry_name, options)?;
+
+        // Check if this is a WAD file that was fixed
+        let is_wad = entry_name.to_lowercase().ends_with(".wad.client");
+        let fixed_wad = if is_wad {
+            fixed_map.get(&entry_name.to_lowercase())
+        } else {
+            None
+        };
+
+        if let Some(fixed_path) = fixed_wad {
+            // Write the fixed WAD instead of the original
+            let fixed_data = std::fs::read(fixed_path)?;
+            output_archive.write_all(&fixed_data)?;
+            tracing::debug!("Replaced {} with fixed version", entry_name);
+        } else {
+            // Copy original file as-is
+            let mut buffer = Vec::new();
+            entry.read_to_end(&mut buffer)?;
+            output_archive.write_all(&buffer)?;
+        }
+    }
+
+    output_archive.finish()?;
+    tracing::info!("=> Wrote fixed fantome to: {}", output_path.display());
+
+    Ok(())
 }

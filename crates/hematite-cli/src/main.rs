@@ -78,12 +78,29 @@ fn main() -> Result<()> {
         logging::log_session_summary(&result, duration);
     }
 
+    // Wait for user input before exiting (only in non-JSON mode)
+    if !cli.json {
+        wait_for_keypress();
+    }
+
     // Exit with appropriate code
     if result.errors.is_empty() {
         Ok(())
     } else {
         anyhow::bail!("Processing completed with {} error(s)", result.errors.len());
     }
+}
+
+/// Wait for user to press any key before exiting.
+fn wait_for_keypress() {
+    use std::io::{self, Read, Write};
+
+    print!("\nPress any key to continue...");
+    let _ = io::stdout().flush();
+
+    // Read a single byte (works on both Windows and Unix)
+    let mut buffer = [0u8; 1];
+    let _ = io::stdin().read(&mut buffer);
 }
 
 /// Output check-mode results as JSON.
