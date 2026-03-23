@@ -101,7 +101,12 @@ pub struct Cli {
     #[arg(long, help = "Process all skins found in mod (not just primary skin)")]
     pub all_skins: bool,
 
-    #[arg(short = 'v', long, default_value = "normal", help = "Verbosity level")]
+    #[arg(
+        short = 'v',
+        long,
+        default_value = "normal",
+        help = "Verbosity: quiet (errors only), normal (clean output), verbose (debug info), trace (all logs)"
+    )]
     pub verbosity: Verbosity,
 }
 

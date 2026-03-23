@@ -13,30 +13,34 @@ pub fn init(verbosity: &Verbosity, json_mode: bool) {
         let _ = colored::control::set_virtual_terminal(true);
     }
 
-    let level = match verbosity {
-        Verbosity::Quiet => Level::ERROR,
-        Verbosity::Normal => Level::INFO,
-        Verbosity::Verbose => Level::DEBUG,
-        Verbosity::Trace => Level::TRACE,
+    let filter = match verbosity {
+        Verbosity::Quiet => {
+            // Only errors
+            EnvFilter::from_default_env()
+                .add_directive(Level::ERROR.into())
+        }
+        Verbosity::Normal => {
+            // INFO and above, no debug spam
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+        }
+        Verbosity::Verbose => {
+            // DEBUG level for hematite crates
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("hematite_cli=debug".parse().unwrap())
+                .add_directive("hematite_core=debug".parse().unwrap())
+                .add_directive("hematite_ltk=debug".parse().unwrap())
+        }
+        Verbosity::Trace => {
+            // TRACE everything
+            EnvFilter::from_default_env()
+                .add_directive(Level::TRACE.into())
+                .add_directive("hematite_cli=trace".parse().unwrap())
+                .add_directive("hematite_core=trace".parse().unwrap())
+                .add_directive("hematite_ltk=trace".parse().unwrap())
+        }
     };
-
-    let filter = EnvFilter::from_default_env()
-        .add_directive(level.into())
-        .add_directive(
-            "hematite_cli=debug"
-                .parse()
-                .expect("BUG: hardcoded directive is invalid"),
-        )
-        .add_directive(
-            "hematite_core=debug"
-                .parse()
-                .expect("BUG: hardcoded directive is invalid"),
-        )
-        .add_directive(
-            "hematite_ltk=debug"
-                .parse()
-                .expect("BUG: hardcoded directive is invalid"),
-        );
 
     if json_mode {
         // JSON output for automation
@@ -45,11 +49,12 @@ pub fn init(verbosity: &Verbosity, json_mode: bool) {
             .with_env_filter(filter)
             .init();
     } else {
-        // Human-readable colored output
+        // Human-readable colored output (hide timestamps in normal mode)
         tracing_subscriber::fmt()
             .with_env_filter(filter)
             .with_target(false)
-            .with_level(true)
+            .with_level(matches!(verbosity, Verbosity::Verbose | Verbosity::Trace))
+            .without_time()
             .init();
     }
 }
