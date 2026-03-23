@@ -128,6 +128,28 @@ const ALL_FIX_IDS: &[&str] = &[
     "entry_validator",
 ];
 
+/// WAD-level fixes (operate on file lists, not BIN property trees).
+const WAD_LEVEL_FIXES: &[&str] = &["bnk_remover", "anm_remover", "dds_to_tex"];
+
+/// Filter out WAD-level fixes from a fix list (for BIN-only processing).
+pub fn filter_bin_fixes(fixes: &[String]) -> Vec<String> {
+    fixes
+        .iter()
+        .filter(|f| !WAD_LEVEL_FIXES.contains(&f.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Filter to only WAD-level fixes.
+#[allow(dead_code)]
+pub fn filter_wad_fixes(fixes: &[String]) -> Vec<String> {
+    fixes
+        .iter()
+        .filter(|f| WAD_LEVEL_FIXES.contains(&f.as_str()))
+        .cloned()
+        .collect()
+}
+
 /// Collect selected fix IDs based on CLI flags.
 ///
 /// If `--all` is set or no flags are passed, returns all fix IDs.

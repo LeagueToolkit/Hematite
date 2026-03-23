@@ -244,8 +244,9 @@ fn process_bin_file(
         shader_validator: shader_validator.as_ref(),
     };
 
-    // Run fixes
-    let mut result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+    // Run fixes (filter out WAD-level fixes for standalone BIN)
+    let bin_fixes = crate::args::filter_bin_fixes(selected_fixes);
+    let mut result = apply_fixes(&mut ctx, config, &bin_fixes, dry_run);
 
     // In check mode, populate CheckInfo from detected issues
     if check {
@@ -472,7 +473,9 @@ fn process_wad_file(
             shader_validator: shader_validator.as_ref(),
         };
 
-        let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+        // Filter out WAD-level fixes (they're handled by wad_pipeline above)
+        let bin_fixes = crate::args::filter_bin_fixes(selected_fixes);
+        let result = apply_fixes(&mut ctx, config, &bin_fixes, dry_run);
         let fixes_applied = result.fixes_applied;
         total_result.merge(result);
 
