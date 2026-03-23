@@ -7,7 +7,7 @@
     <a href="https://github.com/LeagueToolkit/Hematite/releases"><img src="https://img.shields.io/github/v/release/LeagueToolkit/Hematite?style=flat-square&label=release&color=blue" alt="Release"></a>
     <img src="https://img.shields.io/badge/rust-2021_edition-orange?style=flat-square" alt="Rust">
     <img src="https://img.shields.io/badge/platform-windows-0078D6?style=flat-square" alt="Windows">
-    <img src="https://img.shields.io/badge/tests-76_passing-brightgreen?style=flat-square" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-84_passing-brightgreen?style=flat-square" alt="Tests">
     <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   </p>
 </p>
@@ -23,9 +23,12 @@ Fix rules are defined in JSON config, so new fixes can be added without recompil
 - **Auto-detect mode** — runs all applicable fixes with zero configuration
 - **Config-driven fixes** — add new fix rules via JSON, no code changes needed
 - **Full write-back** — modified files are written back to disk (BIN, WAD, Fantome)
-- **Batch processing** — process entire directories of skin files at once
+- **Batch processing** — drag-and-drop folders, process multiple files with progress tracking
+- **Windows CMD optimized** — colored output, ASCII-friendly symbols, proper ANSI support
 - **LMDB hash system** — loads 1.8M game hashes in under 1 second
 - **Remote config** — fetches latest fix rules from GitHub with offline fallback
+- **Check mode** — detect issues without modifying files, shows champion/skin info
+- **Verbosity levels** — clean output by default, verbose mode for debugging
 - **Security hardened** — ZIP bomb protection, path traversal prevention, size limits
 - **Dry-run mode** — preview what would be fixed before modifying files
 - **JSON output** — machine-readable results for automation pipelines
@@ -61,7 +64,10 @@ hematite-cli "skin.fantome" --json > results.json
 | **Broken Particles** | Fixes particle texture paths recursively | `--particles` |
 | **Champion Data** | Removes outdated champion BIN entries | `--remove-champion-bins` |
 | **Audio Files** | Removes BNK files with incompatible Wwise versions | `--remove-bnk` |
+| **Animations** | Removes .anm animation files from mod | `--remove-anm` |
 | **VFX Shape** | Migrates VFX shape data to 14.1+ format | `--vfx-shape` |
+| **Invalid Shaders** | Replaces invalid shader references with closest match | `--fix-shaders` |
+| **Unreferenced Entries** | Removes CAD/AnimGraph/GearSkinUpgrade entries | `--validate-entries` |
 
 Use `--all` or pass no flags to apply everything.
 
@@ -79,12 +85,13 @@ Use `--all` or pass no flags to apply everything.
 hematite-cli [OPTIONS] <INPUT>
 
 Arguments:
-  <INPUT>    File or directory to process
+  <INPUT>    File or directory to process (.bin, .wad.client, .fantome, .zip, or folder)
 
 Options:
   -o, --output <PATH>       Output path (default: creates .fixed.* next to input)
   -a, --all                 Enable all fixes
       --dry-run             Show what would be fixed without modifying files
+      --check               Check mode: detect issues without fixing, show skin info
       --json                JSON output for automation
   -v, --verbosity <LEVEL>   Verbosity: quiet, normal, verbose, trace [default: normal]
       --small-mod           Skip fallback assets (for texture-only mods)
@@ -97,7 +104,10 @@ Fix flags:
       --particles             Fix broken particle textures
       --remove-champion-bins  Remove outdated champion data
       --remove-bnk            Remove incompatible audio files
+      --remove-anm            Remove .anm animation files
       --vfx-shape             Fix VFX shape format (14.1+)
+      --fix-shaders           Fix invalid shader references
+      --validate-entries      Remove unreferenced entries
 
   -h, --help     Print help
   -V, --version  Print version
@@ -191,7 +201,7 @@ cargo build --release --bin hematite-cli
 ### Test
 
 ```bash
-cargo test --workspace            # 76 tests
+cargo test --workspace            # 84 tests
 cargo clippy --workspace          # Lint check
 cargo fmt --all -- --check        # Format check
 ```
@@ -201,8 +211,8 @@ cargo fmt --all -- --check        # Format check
 Releases are automated via GitHub Actions. Push a version tag to trigger:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 # CI: generates changelog (git-cliff) → builds binary → creates GitHub Release
 ```
 

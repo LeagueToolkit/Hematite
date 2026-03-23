@@ -29,12 +29,12 @@ fn load_hash_provider() -> Result<Arc<dyn HashProvider>> {
     // Try LMDB first
     match LmdbHashProvider::load_from_appdata() {
         Ok(provider) => {
-            tracing::info!("Using LMDB hash provider");
+            tracing::debug!("Using LMDB hash provider");
             return Ok(Arc::new(provider));
         }
         Err(e) => {
             tracing::warn!("LMDB hash provider unavailable: {}", e);
-            tracing::info!("Falling back to TXT hash provider");
+            tracing::debug!("Falling back to TXT hash provider");
         }
     }
 
@@ -59,21 +59,50 @@ pub fn process_input(
     let mut total_result = ProcessResult::default();
 
     if input.is_dir() {
-        for entry in WalkDir::new(input) {
-            let entry = entry.context("Failed to read directory entry")?;
-            let path = entry.path();
+        // Collect all files first to show progress
+        let files: Vec<_> = WalkDir::new(input)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file() && is_supported_file(e.path()))
+            .map(|e| e.path().to_path_buf())
+            .collect();
 
-            if path.is_file() && is_supported_file(path) {
-                let result = process_file_with_hashes(
-                    path,
-                    config,
-                    selected_fixes,
-                    champions,
-                    dry_run,
-                    &hash_provider,
-                    check,
-                )?;
-                total_result.merge(result);
+        if files.is_empty() {
+            tracing::warn!("No supported files found in directory");
+            return Ok(total_result);
+        }
+
+        // Log batch processing start
+        crate::logging::log_batch_start(files.len());
+
+        // Process each file with progress
+        for (index, path) in files.iter().enumerate() {
+            crate::logging::log_file_progress(index + 1, files.len(), &path.display().to_string());
+
+            match process_file_with_hashes(
+                path,
+                config,
+                selected_fixes,
+                champions,
+                dry_run,
+                &hash_provider,
+                check,
+            ) {
+                Ok(result) => {
+                    let fixes_applied = result.fixes_applied;
+                    let success = result.errors.is_empty();
+                    total_result.merge(result);
+                    crate::logging::log_file_complete(
+                        &path.display().to_string(),
+                        fixes_applied,
+                        success,
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("Failed to process {}: {}", path.display(), e);
+                    total_result.errors.push(format!("{}: {}", path.display(), e));
+                    crate::logging::log_file_complete(&path.display().to_string(), 0, false);
+                }
             }
         }
     } else {
@@ -175,7 +204,7 @@ fn process_bin_file(
     hash_provider: &Arc<dyn HashProvider>,
     check: bool,
 ) -> Result<ProcessResult> {
-    tracing::info!("Processing BIN: {}", file.display());
+    tracing::debug!("Processing BIN: {}", file.display());
 
     // Initialize BIN provider
     let bin_provider = LtkBinProvider;
@@ -215,8 +244,9 @@ fn process_bin_file(
         shader_validator: shader_validator.as_ref(),
     };
 
-    // Run fixes
-    let mut result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+    // Run fixes (filter out WAD-level fixes for standalone BIN)
+    let bin_fixes = crate::args::filter_bin_fixes(selected_fixes);
+    let mut result = apply_fixes(&mut ctx, config, &bin_fixes, dry_run);
 
     // In check mode, populate CheckInfo from detected issues
     if check {
@@ -244,8 +274,8 @@ fn process_bin_file(
         std::fs::write(&output_path, &modified_bytes)
             .context("Failed to save modified BIN file")?;
 
-        tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
-        tracing::info!(
+        tracing::info!("Saved: {}", output_path.display());
+        tracing::debug!(
             "  {} fixes applied, {} bytes written",
             result.fixes_applied,
             modified_bytes.len()
@@ -271,7 +301,7 @@ fn process_wad_file(
     use hematite_core::wad_pipeline;
     use hematite_ltk::wad_adapter::WadFile;
 
-    tracing::info!("Processing WAD: {}", file.display());
+    tracing::debug!("Processing WAD: {}", file.display());
 
     let bin_provider = LtkBinProvider;
 
@@ -290,7 +320,7 @@ fn process_wad_file(
         .cloned()
         .collect();
 
-    tracing::info!(
+    tracing::debug!(
         "WAD has {} total entries, {} BIN files",
         wad_provider.hash_count(),
         bin_chunks.len()
@@ -309,7 +339,7 @@ fn process_wad_file(
 
     // Track WAD-level fixes applied
     for wad_fix in &wad_output.applied_fixes {
-        tracing::info!(
+        tracing::debug!(
             "WAD-level fix '{}' affected {} files",
             wad_fix.fix_name,
             wad_fix.files_affected
@@ -325,7 +355,7 @@ fn process_wad_file(
 
     let mut conversion_count = 0u32;
     if !wad_output.files_to_convert.is_empty() {
-        tracing::info!(
+        tracing::debug!(
             "Converting {} file formats...",
             wad_output.files_to_convert.len()
         );
@@ -338,8 +368,8 @@ fn process_wad_file(
                         let old_size = bytes.len();
                         *bytes = converted_bytes;
                         conversion_count += 1;
-                        tracing::info!(
-                            "✓ Converted {} from .{} to .{} ({} → {} bytes)",
+                        tracing::debug!(
+                            "Converted {} from .{} to .{} ({} -> {} bytes)",
                             conversion.path,
                             conversion.from_ext,
                             conversion.to_ext,
@@ -349,7 +379,7 @@ fn process_wad_file(
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "✗ Converter '{}' failed for {}: {}",
+                            "Converter '{}' failed for {}: {}",
                             conversion.converter,
                             conversion.path,
                             e
@@ -443,7 +473,9 @@ fn process_wad_file(
             shader_validator: shader_validator.as_ref(),
         };
 
-        let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+        // Filter out WAD-level fixes (they're handled by wad_pipeline above)
+        let bin_fixes = crate::args::filter_bin_fixes(selected_fixes);
+        let result = apply_fixes(&mut ctx, config, &bin_fixes, dry_run);
         let fixes_applied = result.fixes_applied;
         total_result.merge(result);
 
@@ -513,7 +545,7 @@ fn process_wad_file(
         use std::io::Write;
         use xxhash_rust::xxh64::xxh64;
 
-        tracing::info!("Building modified WAD...");
+        tracing::debug!("Building modified WAD...");
 
         let mut builder = WadBuilder::default();
         let mut chunks_included = 0;
@@ -547,15 +579,15 @@ fn process_wad_file(
             Ok(())
         })?;
 
-        tracing::info!("✓ Wrote fixed WAD to: {}", output_path.display());
-        tracing::info!(
-            "  {} chunks included, {} files removed",
+        tracing::info!("Saved: {}", output_path.display());
+        tracing::debug!(
+            "  {} chunks included, {} files removed, {} fixes applied",
             chunks_included,
-            shared_files_to_remove.len()
+            shared_files_to_remove.len(),
+            total_result.fixes_applied
         );
-        tracing::info!("  {} total fixes applied", total_result.fixes_applied);
     } else if !dry_run {
-        tracing::info!("No changes detected - WAD not modified");
+        tracing::debug!("No changes detected - WAD not modified");
     }
 
     Ok(total_result)
@@ -573,7 +605,7 @@ fn process_fantome_file(
     hash_provider: &Arc<dyn HashProvider>,
     check: bool,
 ) -> Result<ProcessResult> {
-    tracing::info!("Processing Fantome: {}", file.display());
+    tracing::debug!("Processing Fantome: {}", file.display());
 
     let zip_file = std::fs::File::open(file).context("Failed to open fantome/zip file")?;
     let mut archive = zip::ZipArchive::new(std::io::BufReader::new(zip_file))
@@ -660,9 +692,11 @@ fn process_fantome_file(
         return Ok(ProcessResult::default());
     }
 
-    tracing::info!("Found {} WAD file(s) in archive", wad_paths.len());
+    tracing::debug!("Found {} WAD file(s) in archive", wad_paths.len());
 
     let mut total_result = ProcessResult::default();
+    let mut fixed_wad_paths = Vec::new();
+
     for wad_path in &wad_paths {
         let result = process_wad_file(
             wad_path,
@@ -673,8 +707,104 @@ fn process_fantome_file(
             hash_provider,
             check,
         )?;
+
+        // Track the fixed WAD path (original.wad.client -> original.fixed.wad.client)
+        let has_fixes = result.fixes_applied > 0;
         total_result.merge(result);
+
+        if !dry_run && has_fixes {
+            let fixed_path = wad_path.with_extension("fixed.wad.client");
+            if fixed_path.exists() {
+                fixed_wad_paths.push((wad_path.clone(), fixed_path));
+            }
+        }
+    }
+
+    // Rebuild the fantome/zip archive with fixed WAD files
+    if !dry_run && !fixed_wad_paths.is_empty() && !check {
+        rebuild_fantome_archive(file, &temp_dir, &fixed_wad_paths)?;
+        tracing::debug!(
+            "Rebuilt fantome with {} fixed WAD file(s)",
+            fixed_wad_paths.len()
+        );
     }
 
     Ok(total_result)
+}
+
+/// Rebuild a fantome/zip archive, replacing WAD files with their fixed versions.
+fn rebuild_fantome_archive(
+    original_file: &Path,
+    _temp_dir: &tempfile::TempDir,
+    fixed_wads: &[(std::path::PathBuf, std::path::PathBuf)],
+) -> Result<()> {
+    use std::io::{Read, Write};
+
+    // Read the original archive to copy non-WAD files
+    let original_zip = std::fs::File::open(original_file)?;
+    let mut original_archive = zip::ZipArchive::new(std::io::BufReader::new(original_zip))?;
+
+    // Create output path: original.fantome -> original.fixed.fantome
+    let output_path = if original_file.extension().and_then(|e| e.to_str()) == Some("fantome") {
+        original_file.with_extension("fixed.fantome")
+    } else {
+        original_file.with_extension("fixed.zip")
+    };
+
+    let output_file = std::fs::File::create(&output_path)?;
+    let mut output_archive = zip::ZipWriter::new(output_file);
+
+    // Create a map of original WAD paths to fixed WAD paths
+    let fixed_map: std::collections::HashMap<String, &std::path::Path> = fixed_wads
+        .iter()
+        .map(|(orig, fixed)| {
+            (
+                orig.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+                    .replace(".wad.client", "")
+                    + ".wad.client",
+                fixed.as_path(),
+            )
+        })
+        .collect();
+
+    // Copy all files from original archive, replacing WADs with fixed versions
+    for i in 0..original_archive.len() {
+        let mut entry = original_archive.by_index(i)?;
+        let entry_name = entry.name().to_string();
+
+        // Use same compression method as original
+        let options = zip::write::FileOptions::default()
+            .compression_method(entry.compression())
+            .unix_permissions(entry.unix_mode().unwrap_or(0o644));
+
+        output_archive.start_file(&entry_name, options)?;
+
+        // Check if this is a WAD file that was fixed
+        let is_wad = entry_name.to_lowercase().ends_with(".wad.client");
+        let fixed_wad = if is_wad {
+            fixed_map.get(&entry_name.to_lowercase())
+        } else {
+            None
+        };
+
+        if let Some(fixed_path) = fixed_wad {
+            // Write the fixed WAD instead of the original
+            let fixed_data = std::fs::read(fixed_path)?;
+            output_archive.write_all(&fixed_data)?;
+            tracing::debug!("Replaced {} with fixed version", entry_name);
+        } else {
+            // Copy original file as-is
+            let mut buffer = Vec::new();
+            entry.read_to_end(&mut buffer)?;
+            output_archive.write_all(&buffer)?;
+        }
+    }
+
+    output_archive.finish()?;
+    tracing::info!("Saved: {}", output_path.display());
+
+    Ok(())
 }

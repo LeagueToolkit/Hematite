@@ -26,9 +26,16 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "hematite-cli")]
 #[command(about = "League of Legends custom skin fixer")]
+#[command(
+    long_about = "League of Legends custom skin fixer\n\n\
+                  Automatically detects and fixes common issues in custom skins.\n\
+                  Supports .bin, .wad.client, .fantome, and .zip files.\n\n\
+                  By default, all fixes are applied automatically when no specific flags are provided.\n\
+                  Drag and drop files or folders to process multiple skins at once."
+)]
 #[command(version)]
 pub struct Cli {
-    /// Input file or directory to process
+    /// Input file or directory to process (.bin, .wad.client, .fantome, .zip, or folder)
     pub input: PathBuf,
 
     /// Output path (default: overwrite input)
@@ -94,7 +101,12 @@ pub struct Cli {
     #[arg(long, help = "Process all skins found in mod (not just primary skin)")]
     pub all_skins: bool,
 
-    #[arg(short = 'v', long, default_value = "normal", help = "Verbosity level")]
+    #[arg(
+        short = 'v',
+        long,
+        default_value = "normal",
+        help = "Verbosity: quiet (errors only), normal (clean output), verbose (debug info), trace (all logs)"
+    )]
     pub verbosity: Verbosity,
 }
 
@@ -120,6 +132,28 @@ const ALL_FIX_IDS: &[&str] = &[
     "shader_fallback",
     "entry_validator",
 ];
+
+/// WAD-level fixes (operate on file lists, not BIN property trees).
+const WAD_LEVEL_FIXES: &[&str] = &["bnk_remover", "anm_remover", "dds_to_tex"];
+
+/// Filter out WAD-level fixes from a fix list (for BIN-only processing).
+pub fn filter_bin_fixes(fixes: &[String]) -> Vec<String> {
+    fixes
+        .iter()
+        .filter(|f| !WAD_LEVEL_FIXES.contains(&f.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Filter to only WAD-level fixes.
+#[allow(dead_code)]
+pub fn filter_wad_fixes(fixes: &[String]) -> Vec<String> {
+    fixes
+        .iter()
+        .filter(|f| WAD_LEVEL_FIXES.contains(&f.as_str()))
+        .cloned()
+        .collect()
+}
 
 /// Collect selected fix IDs based on CLI flags.
 ///
