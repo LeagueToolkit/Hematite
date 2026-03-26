@@ -62,11 +62,28 @@ impl LmdbHashProvider {
     pub fn load_from_path(lmdb_dir: &std::path::Path) -> Result<Self> {
         tracing::info!("Loading LMDB hashes from: {}", lmdb_dir.display());
 
+        // Determine map_size from actual file size (LMDB defaults to 10 MB which is too small)
+        // IMPORTANT: heed requires map_size to be a multiple of the OS page size
+        let data_mdb = lmdb_dir.join("data.mdb");
+        let page = page_size::get();
+        let map_size = if data_mdb.exists() {
+            let file_size = std::fs::metadata(&data_mdb)
+                .map(|m| m.len() as usize)
+                .unwrap_or(0);
+            // Use file size + 25% headroom, minimum 100 MB, rounded up to page boundary
+            let min_size = 100 * 1024 * 1024;
+            let raw = std::cmp::max(file_size + file_size / 4, min_size);
+            raw.div_ceil(page) * page
+        } else {
+            1024 * 1024 * 1024 // 1 GB fallback (already page-aligned)
+        };
+
         // Open LMDB environment (read-only)
+        let mut opts = EnvOpenOptions::new();
+        opts.max_dbs(4);
+        opts.map_size(map_size);
         let env = unsafe {
-            EnvOpenOptions::new()
-                .max_dbs(4)
-                .open(lmdb_dir)
+            opts.open(lmdb_dir)
                 .context("Failed to open LMDB environment")?
         };
 

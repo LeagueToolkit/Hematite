@@ -802,6 +802,7 @@ dependencies = [
  "league-toolkit",
  "ltk_primitives",
  "ltk_texture",
+ "page_size",
  "tracing",
  "xxhash-rust",
 ]

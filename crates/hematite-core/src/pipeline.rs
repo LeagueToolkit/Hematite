@@ -37,9 +37,13 @@ pub fn apply_fixes(
 
     for fix_id in selected_fix_ids {
         let Some(fix_rule) = config.fixes.get(fix_id) else {
-            result
-                .errors
-                .push(format!("Fix rule not found: {}", fix_id));
+            // WAD-level fix IDs (e.g. bnk_remover, anm_remover) are handled
+            // separately by the WAD pipeline — skip them silently here.
+            if !config.wad_fixes.contains_key(fix_id) {
+                result
+                    .errors
+                    .push(format!("Fix rule not found: {}", fix_id));
+            }
             continue;
         };
 

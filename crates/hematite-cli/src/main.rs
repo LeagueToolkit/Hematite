@@ -21,7 +21,26 @@ use clap::Parser;
 use hematite_types::champion::CharacterRelations;
 use std::time::Instant;
 
-fn main() -> Result<()> {
+fn main() {
+    let result = run();
+
+    if let Err(ref e) = result {
+        eprintln!("Error: {e:#}");
+    }
+
+    // Pause before exit so console doesn't close instantly when double-clicked
+    if !std::env::args().any(|a| a == "--json" || a == "--no-pause") {
+        eprintln!();
+        eprintln!("Press Enter to exit...");
+        let _ = std::io::Read::read(&mut std::io::stdin(), &mut [0u8]);
+    }
+
+    if result.is_err() {
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     // Parse CLI arguments
     let cli = args::Cli::parse();
 

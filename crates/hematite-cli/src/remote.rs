@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 /// GitHub raw content URL base
-const GITHUB_RAW_BASE: &str = "https://raw.githubusercontent.com/LeagueToolkit/Hematite/v2/config";
+const GITHUB_RAW_BASE: &str = "https://raw.githubusercontent.com/LeagueToolkit/Hematite/main/config";
 
 /// URLs for remote configs
 const FIX_CONFIG_URL: &str = const_format::formatcp!("{}/fix_config.json", GITHUB_RAW_BASE);

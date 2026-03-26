@@ -676,5 +676,65 @@ fn process_fantome_file(
         total_result.merge(result);
     }
 
+    // === FANTOME REPACK ===
+    // Rebuild the fantome ZIP with fixed WADs replacing the originals
+    if !dry_run && total_result.fixes_applied > 0 {
+        let output_path = file.with_extension("fixed.fantome");
+
+        tracing::info!("Repacking fantome archive...");
+
+        // Re-open the original ZIP to copy non-WAD entries
+        let original_zip_file =
+            std::fs::File::open(file).context("Failed to re-open original fantome")?;
+        let mut original_archive =
+            zip::ZipArchive::new(std::io::BufReader::new(original_zip_file))
+                .context("Failed to re-read original ZIP")?;
+
+        let output_file =
+            std::fs::File::create(&output_path).context("Failed to create output fantome")?;
+        let mut zip_writer = zip::ZipWriter::new(std::io::BufWriter::new(output_file));
+
+        let zip_options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        for i in 0..original_archive.len() {
+            let mut entry = original_archive.by_index(i)?;
+            let entry_name = entry.name().to_string();
+            let is_wad = entry_name.to_lowercase().ends_with(".wad.client");
+
+            if is_wad {
+                // Use the fixed WAD if it exists, otherwise copy original
+                let fixed_wad_path = temp_dir
+                    .path()
+                    .join(&entry_name)
+                    .with_extension("fixed.wad.client");
+
+                if fixed_wad_path.exists() {
+                    let fixed_bytes = std::fs::read(&fixed_wad_path)
+                        .context("Failed to read fixed WAD from temp")?;
+                    zip_writer.start_file(&entry_name, zip_options)?;
+                    std::io::Write::write_all(&mut zip_writer, &fixed_bytes)?;
+                    tracing::debug!("Repacked fixed WAD: {}", entry_name);
+                } else {
+                    // No fixes applied to this WAD, copy original
+                    zip_writer.start_file(&entry_name, zip_options)?;
+                    std::io::copy(&mut entry, &mut zip_writer)?;
+                    tracing::debug!("Repacked original WAD: {}", entry_name);
+                }
+            } else {
+                // Copy non-WAD entries as-is (META/info.json, etc.)
+                zip_writer.start_file(&entry_name, zip_options)?;
+                std::io::copy(&mut entry, &mut zip_writer)?;
+            }
+        }
+
+        zip_writer.finish()?;
+
+        tracing::info!("✓ Wrote fixed fantome to: {}", output_path.display());
+        tracing::info!("  {} total fixes applied", total_result.fixes_applied);
+    } else if !dry_run {
+        tracing::info!("No changes detected - fantome not modified");
+    }
+
     Ok(total_result)
 }
