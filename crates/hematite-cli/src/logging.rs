@@ -7,6 +7,10 @@ use tracing_subscriber::EnvFilter;
 
 /// Initialize the tracing subscriber based on verbosity level.
 pub fn init(verbosity: &Verbosity, json_mode: bool) {
+    // Enable ANSI colors on Windows (no-op on other platforms)
+    #[cfg(windows)]
+    let _ = colored::control::set_virtual_terminal(true);
+
     let level = match verbosity {
         Verbosity::Quiet => Level::ERROR,
         Verbosity::Normal => Level::INFO,

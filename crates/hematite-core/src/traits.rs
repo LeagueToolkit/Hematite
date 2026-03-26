@@ -49,6 +49,12 @@ pub trait HashProvider: Send + Sync {
     /// Reverse lookup: field name → field hash.
     fn field_hash(&self, name: &str) -> Option<FieldHash>;
 
+    /// Check if a game asset path exists in the hash dictionary.
+    ///
+    /// Computes the xxhash64 of the path and checks if it's in the loaded hashes.
+    /// Returns false if the path is not a known game asset (likely custom/repathed).
+    fn has_game_path(&self, path: &str) -> bool;
+
     /// Whether any hashes are loaded (false if dictionary is empty/missing).
     fn is_loaded(&self) -> bool;
 }

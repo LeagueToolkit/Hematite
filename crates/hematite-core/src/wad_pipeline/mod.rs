@@ -25,6 +25,7 @@ pub mod transform;
 
 use anyhow::Result;
 use hematite_types::config::{FixConfig, WadFixRule};
+use crate::traits::HashProvider;
 
 /// Result of applying a single WAD-level fix.
 #[derive(Debug, Clone)]
@@ -37,10 +38,15 @@ pub struct WadFixResult {
 /// Apply WAD-level fixes to a list of files.
 ///
 /// Returns a list of file operations to perform (remove, convert, rename).
+///
+/// ## Custom Repathed Files
+/// Files whose paths don't exist in the hash provider are considered custom
+/// repathed files and will skip format conversions (they're kept as-is).
 pub fn apply_wad_fixes(
     files: &[(String, Vec<u8>)],
     config: &FixConfig,
     selected_fix_ids: &[String],
+    hash_provider: &dyn HashProvider,
 ) -> Result<WadFixOutput> {
     let mut output = WadFixOutput::default();
 
@@ -53,7 +59,7 @@ pub fn apply_wad_fixes(
             continue;
         }
 
-        let result = apply_single_fix(files, fix_rule, fix_id)?;
+        let result = apply_single_fix(files, fix_rule, fix_id, hash_provider)?;
         output.merge(result);
     }
 
@@ -94,6 +100,7 @@ fn apply_single_fix(
     files: &[(String, Vec<u8>)],
     fix_rule: &WadFixRule,
     fix_id: &str,
+    _hash_provider: &dyn HashProvider,
 ) -> Result<WadFixOutput> {
     let mut output = WadFixOutput::default();
     let mut files_affected = 0u32;
@@ -114,13 +121,26 @@ fn apply_single_fix(
                     to_ext,
                     converter,
                 } => {
-                    output.files_to_convert.push(FileConversion {
-                        path: path.clone(),
-                        from_ext,
-                        to_ext,
-                        converter,
-                    });
-                    files_affected += 1;
+                    // Check if converted path exists in hash provider
+                    // If not, it's a custom repathed file — skip conversion to preserve original format
+                    let converted_path = path.replace(&format!(".{}", from_ext), &format!(".{}", to_ext));
+
+                    if _hash_provider.has_game_path(&converted_path) {
+                        // Path exists in game files — safe to convert
+                        output.files_to_convert.push(FileConversion {
+                            path: path.clone(),
+                            from_ext,
+                            to_ext,
+                            converter,
+                        });
+                        files_affected += 1;
+                    } else {
+                        // Path not in hash list — skip conversion (custom repathed file)
+                        tracing::debug!(
+                            "Skipping conversion for custom path (not in game hashes): {}",
+                            path
+                        );
+                    }
                 }
                 transform::ActionResult::RenameFile { new_path } => {
                     output.files_to_rename.push((path.clone(), new_path));

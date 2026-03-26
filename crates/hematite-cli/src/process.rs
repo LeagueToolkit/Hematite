@@ -302,7 +302,7 @@ fn process_wad_file(
     // === WAD-LEVEL PIPELINE ===
     // Run file-level fixes (BNK removal, format conversions, etc.)
     tracing::debug!("Running WAD-level pipeline...");
-    let wad_output = wad_pipeline::apply_wad_fixes(&all_files, config, selected_fixes)?;
+    let wad_output = wad_pipeline::apply_wad_fixes(&all_files, config, selected_fixes, hash_provider.as_ref())?;
 
     // Collect files to remove from WAD-level fixes
     shared_files_to_remove.extend(wad_output.files_to_remove.clone());

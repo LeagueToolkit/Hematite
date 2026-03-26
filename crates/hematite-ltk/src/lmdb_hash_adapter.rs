@@ -228,6 +228,14 @@ impl HashProvider for LmdbHashProvider {
         self.field_name_to_hash.get(&name.to_lowercase()).copied()
     }
 
+    fn has_game_path(&self, path: &str) -> bool {
+        use xxhash_rust::xxh64::xxh64;
+
+        let normalized = path.to_lowercase().replace('\\', "/");
+        let hash = xxh64(normalized.as_bytes(), 0);
+        self.game_paths.contains_key(&hash)
+    }
+
     fn is_loaded(&self) -> bool {
         !self.types.is_empty() || !self.fields.is_empty()
     }
