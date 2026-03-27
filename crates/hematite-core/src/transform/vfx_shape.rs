@@ -7,18 +7,28 @@
 //! ## What it does
 //! 1. Find `VfxSystemDefinitionData` objects
 //! 2. Look for emitter containers (Complex/SimpleEmitterDefinitionData)
-//! 3. Analyze Shape embeds for old-format fields
-//! 4. Convert to new shape types (0x3dbe415d, 0xee39916f, or 0x4f4e2ed7)
-//! 5. Move `BirthTranslation` from inside Shape to outside as sibling field
+//! 3. Analyze Shape embeds (stored as `Embedded`) for old-format fields
+//! 4. Convert shape struct type (0x3dbe415d, 0xee39916f, or 0x4f4e2ed7)
+//! 5. Change the Shape property from `Embedded` → `Struct` and rename its
+//!    field hash to `NEW_SHAPE_HASH` (0x3bf0b4ed) — this is required by the game
+//! 6. Move `BirthTranslation` from inside Shape to outside as sibling field
 //!
-//! ## New shape types
+//! ## Shape type constants (class_hash of the converted shape struct)
 //! - `0x3dbe415d` — Cylinder with Radius/Height/Flags
 //! - `0xee39916f` — Simple EmitOffset (Vec3)
 //! - `0x4f4e2ed7` — Default fallback (empty)
+//!
+//! ## Field hash constants
+//! - `0x3bf0b4ed` — New field hash for the Shape property on the emitter
+//!   (replaces the old "Shape" FNV-1a hash; game expects this after patch 14.1)
 
 use crate::context::FixContext;
 use hematite_types::bin::{BinProperty, PropertyValue, StructValue};
 use hematite_types::hash::{FieldHash, TypeHash};
+
+/// Field hash the game expects for the shape property after patch 14.1.
+/// The old hash was FNV-1a("shape"); the new one is different and must be used.
+const NEW_SHAPE_HASH: u32 = 0x3bf0b4ed;
 
 const NEW_BIRTH_TRANSLATION_HASH: u32 = 0x563d4a22;
 const BIRTH_TRANSLATION_TYPE_HASH: u32 = 0x68dc32b6;
@@ -31,14 +41,18 @@ struct ShapeAnalysis {
     birth_translation_vec3: Option<[f32; 3]>,
     radius: f32,
     height: f32,
-    has_cylinder_pattern: bool,
+    /// True when EmitRotationAngles field is present (one condition for cylinder).
+    has_emit_rotation_angles: bool,
+    /// True when EmitRotationAxes has the {0,1,0}{0,0,1} cylinder axis pattern.
+    has_cylinder_axes_pattern: bool,
+    /// True when EmitOffset is the only non-BirthTranslation property → simple shape.
+    has_single_emit_offset: bool,
 }
 
 pub fn apply(ctx: &mut FixContext, entry_type: &str) -> u32 {
     let Some(vfx_system_hash) = ctx.hashes.type_hash(entry_type) else {
         return 0;
     };
-
     let Some(complex_emitter_hash) = ctx.hashes.type_hash("ComplexEmitterDefinitionData") else {
         return 0;
     };
@@ -67,11 +81,11 @@ pub fn apply(ctx: &mut FixContext, entry_type: &str) -> u32 {
         .tree
         .objects
         .keys()
-        .filter(|&&path_hash| {
+        .filter(|&&ph| {
             ctx.tree
                 .objects
-                .get(&path_hash)
-                .map(|obj| obj.class_hash == vfx_system_hash)
+                .get(&ph)
+                .map(|o| o.class_hash == vfx_system_hash)
                 .unwrap_or(false)
         })
         .copied()
@@ -94,17 +108,19 @@ pub fn apply(ctx: &mut FixContext, entry_type: &str) -> u32 {
                     if let PropertyValue::Embedded(emitter) = emitter_val {
                         let is_emitter = emitter.class_hash == complex_emitter_hash
                             || emitter.class_hash == simple_emitter_hash;
-
                         if !is_emitter {
                             continue;
                         }
 
-                        if let Some(shape_prop) = emitter.properties.get_mut(&shape_hash.0) {
-                            if let PropertyValue::Struct(shape) = &mut shape_prop.value {
-                                let analysis = analyze_shape(shape, &hashes);
+                        // Swap-remove the shape property so we can own and modify it,
+                        // then re-insert under the new field hash.
+                        let old_shape_prop = emitter.properties.swap_remove(&shape_hash.0);
+                        if let Some(old_prop) = old_shape_prop {
+                            if let PropertyValue::Embedded(mut shape) = old_prop.value {
+                                let analysis = analyze_shape(&shape, &hashes);
 
                                 if analysis.needs_fix {
-                                    apply_shape_conversion(shape, &analysis, &hashes);
+                                    apply_shape_conversion(&mut shape, &analysis, &hashes);
 
                                     if let Some(birth_vec) = analysis.birth_translation_vec3 {
                                         move_birth_translation_outside(
@@ -114,8 +130,28 @@ pub fn apply(ctx: &mut FixContext, entry_type: &str) -> u32 {
                                         );
                                     }
 
+                                    // Re-insert under new field hash, as Struct (not Embedded).
+                                    emitter.properties.insert(
+                                        NEW_SHAPE_HASH,
+                                        BinProperty {
+                                            name_hash: FieldHash(NEW_SHAPE_HASH),
+                                            value: PropertyValue::Struct(shape),
+                                        },
+                                    );
                                     changes += 1;
+                                } else {
+                                    // No fix needed — restore original.
+                                    emitter.properties.insert(
+                                        shape_hash.0,
+                                        BinProperty {
+                                            name_hash: shape_hash,
+                                            value: PropertyValue::Embedded(shape),
+                                        },
+                                    );
                                 }
+                            } else {
+                                // Not an Embedded value (e.g. already converted) — restore.
+                                emitter.properties.insert(shape_hash.0, old_prop);
                             }
                         }
                     }
@@ -145,8 +181,13 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
         birth_translation_vec3: None,
         radius: 0.0,
         height: 0.0,
-        has_cylinder_pattern: false,
+        has_emit_rotation_angles: false,
+        has_cylinder_axes_pattern: false,
+        has_single_emit_offset: false,
     };
+
+    let mut has_birth_translation = false;
+    let mut has_emit_offset = false;
 
     for (field_hash, field_prop) in &shape.properties {
         if hashes
@@ -155,7 +196,10 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
             .unwrap_or(false)
         {
             analysis.needs_fix = true;
-            if let PropertyValue::Struct(bt_struct) = &field_prop.value {
+            has_birth_translation = true;
+            if let PropertyValue::Struct(bt_struct) | PropertyValue::Embedded(bt_struct) =
+                &field_prop.value
+            {
                 analysis.birth_translation_vec3 =
                     extract_constant_value_vec3(bt_struct, hashes.constant_value);
             }
@@ -167,7 +211,10 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
             .unwrap_or(false)
         {
             analysis.needs_fix = true;
-            if let PropertyValue::Struct(eo_struct) = &field_prop.value {
+            has_emit_offset = true;
+            if let PropertyValue::Struct(eo_struct) | PropertyValue::Embedded(eo_struct) =
+                &field_prop.value
+            {
                 if let Some(vec3) = extract_constant_value_vec3(eo_struct, hashes.constant_value) {
                     analysis.radius = vec3[0];
                     analysis.height = vec3[1];
@@ -181,7 +228,7 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
             .unwrap_or(false)
         {
             analysis.needs_fix = true;
-            analysis.has_cylinder_pattern = true;
+            analysis.has_emit_rotation_angles = true;
         }
 
         if hashes
@@ -195,6 +242,7 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
                     if let (PropertyValue::Vector3(v0), PropertyValue::Vector3(v1)) =
                         (&axes[0], &axes[1])
                     {
+                        // Pattern: { 0, 1, 0 } { 0, 0, 1 } — the cylinder axis pattern
                         if v0[1] == 1.0
                             && v0[0] == 0.0
                             && v0[2] == 0.0
@@ -202,13 +250,19 @@ fn analyze_shape(shape: &StructValue, hashes: &VfxHashes) -> ShapeAnalysis {
                             && v1[0] == 0.0
                             && v1[1] == 0.0
                         {
-                            analysis.has_cylinder_pattern = true;
+                            analysis.has_cylinder_axes_pattern = true;
                         }
                     }
                 }
             }
         }
     }
+
+    // Determine if this is a single-EmitOffset shape (becomes SHAPE_TYPE_SIMPLE).
+    // A shape qualifies if EmitOffset is the only field besides BirthTranslation.
+    let non_birth_count = shape.properties.len()
+        - if has_birth_translation { 1 } else { 0 };
+    analysis.has_single_emit_offset = has_emit_offset && non_birth_count == 1;
 
     analysis
 }
@@ -227,9 +281,13 @@ fn extract_constant_value_vec3(
 }
 
 fn apply_shape_conversion(shape: &mut StructValue, analysis: &ShapeAnalysis, hashes: &VfxHashes) {
-    let target_type = if analysis.has_cylinder_pattern && analysis.radius != 0.0 {
+    // Cylinder requires BOTH EmitRotationAngles AND the {0,1,0}{0,0,1} axis pattern.
+    let target_type = if analysis.has_emit_rotation_angles
+        && analysis.has_cylinder_axes_pattern
+        && analysis.radius != 0.0
+    {
         SHAPE_TYPE_CYLINDER
-    } else if shape.properties.len() == 1 && analysis.radius != 0.0 {
+    } else if analysis.has_single_emit_offset {
         SHAPE_TYPE_SIMPLE
     } else {
         SHAPE_TYPE_DEFAULT
@@ -240,16 +298,14 @@ fn apply_shape_conversion(shape: &mut StructValue, analysis: &ShapeAnalysis, has
 
     match target_type {
         SHAPE_TYPE_CYLINDER => {
-            if analysis.radius != 0.0 {
-                if let Some(r_hash) = hashes.radius {
-                    shape.properties.insert(
-                        r_hash.0,
-                        BinProperty {
-                            name_hash: r_hash,
-                            value: PropertyValue::F32(analysis.radius),
-                        },
-                    );
-                }
+            if let Some(r_hash) = hashes.radius {
+                shape.properties.insert(
+                    r_hash.0,
+                    BinProperty {
+                        name_hash: r_hash,
+                        value: PropertyValue::F32(analysis.radius),
+                    },
+                );
             }
             if analysis.height != 0.0 {
                 if let Some(h_hash) = hashes.height {
@@ -273,11 +329,14 @@ fn apply_shape_conversion(shape: &mut StructValue, analysis: &ShapeAnalysis, has
             }
         }
         SHAPE_TYPE_SIMPLE => {
-            if let Some(r_hash) = hashes.radius {
+            // Simple shape: one EmitOffset field containing the radius/height as a Vec3.
+            // Field hash stays as EmitOffset, but value becomes a plain Vector3
+            // (no longer wrapped in a struct with ConstantValue).
+            if let Some(eo_hash) = hashes.emit_offset {
                 shape.properties.insert(
-                    r_hash.0,
+                    eo_hash.0,
                     BinProperty {
-                        name_hash: r_hash,
+                        name_hash: eo_hash,
                         value: PropertyValue::Vector3([analysis.radius, analysis.height, 0.0]),
                     },
                 );
@@ -310,7 +369,7 @@ fn move_birth_translation_outside(
         NEW_BIRTH_TRANSLATION_HASH,
         BinProperty {
             name_hash: FieldHash(NEW_BIRTH_TRANSLATION_HASH),
-            value: PropertyValue::Struct(StructValue {
+            value: PropertyValue::Embedded(StructValue {
                 class_hash: TypeHash(BIRTH_TRANSLATION_TYPE_HASH),
                 properties: birth_props,
             }),

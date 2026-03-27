@@ -350,9 +350,17 @@ fn detect_vfx_shape_needs_fix(tree: &BinTree, hashes: &dyn HashProvider, entry_t
     let Some(shape_hash) = hashes.field_hash("Shape") else {
         return false;
     };
-    let Some(birth_translation_hash) = hashes.field_hash("BirthTranslation") else {
-        return false;
-    };
+
+    let old_shape_field_hashes: Vec<u32> = [
+        hashes.field_hash("BirthTranslation"),
+        hashes.field_hash("EmitOffset"),
+        hashes.field_hash("EmitRotationAngles"),
+        hashes.field_hash("EmitRotationAxes"),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|h| h.0)
+    .collect();
 
     let objects = filter::objects_by_type(tree, target_type_hash);
 
@@ -365,7 +373,7 @@ fn detect_vfx_shape_needs_fix(tree: &BinTree, hashes: &dyn HashProvider, entry_t
                     if let PropertyValue::Embedded(emitter) = item {
                         if let Some(shape_prop) = emitter.properties.get(&shape_hash.0) {
                             if let PropertyValue::Embedded(shape) = &shape_prop.value {
-                                if has_old_vfx_shape_format(shape, birth_translation_hash) {
+                                if has_old_vfx_shape_format(shape, &old_shape_field_hashes) {
                                     return true;
                                 }
                             }
@@ -379,8 +387,12 @@ fn detect_vfx_shape_needs_fix(tree: &BinTree, hashes: &dyn HashProvider, entry_t
     false
 }
 
-fn has_old_vfx_shape_format(shape: &StructValue, birth_translation_hash: FieldHash) -> bool {
-    shape.properties.contains_key(&birth_translation_hash.0)
+/// Returns true if the shape struct contains any old-format fields that need migration.
+fn has_old_vfx_shape_format(shape: &StructValue, old_field_hashes: &[u32]) -> bool {
+    shape
+        .properties
+        .keys()
+        .any(|k| old_field_hashes.contains(k))
 }
 
 /// Detect invalid shader references in StaticMaterialDef/CustomShaderDef objects.
