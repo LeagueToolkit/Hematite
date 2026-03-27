@@ -178,22 +178,33 @@ impl<R: Read + Seek> WadFile<R> {
         Ok(results)
     }
 
-    /// Extract ALL files from the WAD with resolved paths.
+    /// Extract ALL files from the WAD, preserving original hashes.
     ///
-    /// Returns a vec of (resolved_path, decompressed_bytes) pairs for all extractable chunks.
-    /// Files without resolved paths in the hash dictionary are skipped.
+    /// Returns a vec of (path_hash, resolved_path, decompressed_bytes) for ALL chunks.
+    /// Custom files without resolved paths use hex format as path but keep original hash.
     pub fn extract_all_files(
         &mut self,
         hashes: &dyn HashProvider,
-    ) -> Result<Vec<(String, Vec<u8>)>> {
+    ) -> Result<Vec<(u64, String, Vec<u8>)>> {
         // Collect all chunk info (path_hash + resolved path)
         let all_chunks: Vec<(u64, String)> = self
             .wad
             .chunks()
             .iter()
-            .filter_map(|chunk| {
-                let path = hashes.resolve_game_path(GameHash(chunk.path_hash))?;
-                Some((chunk.path_hash, path.to_string()))
+            .map(|chunk| {
+                // Try to resolve path from hash database
+                let path = hashes
+                    .resolve_game_path(GameHash(chunk.path_hash))
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        // Custom file not in hash DB - use hex format (will be preserved)
+                        tracing::debug!(
+                            "Preserving custom file {:016x} (not in hash database)",
+                            chunk.path_hash
+                        );
+                        format!("{:016x}", chunk.path_hash)
+                    });
+                (chunk.path_hash, path)
             })
             .collect();
 
@@ -229,7 +240,8 @@ impl<R: Read + Seek> WadFile<R> {
 
             match self.wad.load_chunk_decompressed(&chunk) {
                 Ok(data) => {
-                    results.push((path, data.to_vec()));
+                    // Store original hash + path + bytes
+                    results.push((path_hash, path, data.to_vec()));
                 }
                 Err(e) => {
                     tracing::debug!("Failed to extract chunk {path}: {e:?}");

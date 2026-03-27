@@ -97,7 +97,13 @@
             "apply": {
                 "type": "replace_string_extension",
                 "from": ".dds",
-                "to": ".tex"
+                "to": ".tex",
+                "path_prefixes": [
+                    "assets/characters/",
+                    "assets/shared/materials/",
+                    "assets/shared/particles/",
+                    "assets/particles/"
+                ]
             }
         },
         "champion_bin_remover": {

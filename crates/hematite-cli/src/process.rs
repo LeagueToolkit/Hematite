@@ -245,8 +245,18 @@ fn process_bin_file(
             .context("Failed to save modified BIN file")?;
 
         tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
+
+        // Log each applied fix
+        for fix in &result.applied_fixes {
+            tracing::info!(
+                "  ✓ {} ({} changes)",
+                fix.fix_name,
+                fix.changes_count
+            );
+        }
+
         tracing::info!(
-            "  {} fixes applied, {} bytes written",
+            "  Total: {} fixes, {} bytes written",
             result.fixes_applied,
             modified_bytes.len()
         );
@@ -286,7 +296,7 @@ fn process_wad_file(
 
     let bin_chunks: Vec<_> = all_files
         .iter()
-        .filter(|(path, _)| path.to_lowercase().ends_with(".bin"))
+        .filter(|(_hash, path, _bytes)| path.to_lowercase().ends_with(".bin"))
         .cloned()
         .collect();
 
@@ -332,7 +342,7 @@ fn process_wad_file(
 
         for conversion in &wad_output.files_to_convert {
             // Find the file in all_files
-            if let Some((_, bytes)) = all_files.iter_mut().find(|(p, _)| p == &conversion.path) {
+            if let Some((_, _, bytes)) = all_files.iter_mut().find(|(_, p, _)| p == &conversion.path) {
                 match converter_registry.convert(&conversion.converter, bytes) {
                     Ok(converted_bytes) => {
                         let old_size = bytes.len();
@@ -368,7 +378,7 @@ fn process_wad_file(
         std::collections::HashMap::new();
     let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
 
-    for (path, bytes) in &bin_chunks {
+    for (_hash, path, bytes) in &bin_chunks {
         match bin_provider.parse_bytes(bytes) {
             Ok(tree) => {
                 for linked_path in &tree.linked {
@@ -390,7 +400,7 @@ fn process_wad_file(
             continue;
         }
         // Try to find this linked BIN in the extracted files
-        if let Some((_, bytes)) = all_files.iter().find(|(p, _)| *p == linked_path) {
+        if let Some((_, _, bytes)) = all_files.iter().find(|(_, p, _)| *p == linked_path) {
             match bin_provider.parse_bytes(bytes) {
                 Ok(tree) => {
                     for dep in &tree.linked {
@@ -412,7 +422,7 @@ fn process_wad_file(
 
     // Separate primary BINs (from bin_chunks) from linked-only trees
     let primary_bin_paths: std::collections::HashSet<String> =
-        bin_chunks.iter().map(|(p, _)| p.clone()).collect();
+        bin_chunks.iter().map(|(_, p, _)| p.clone()).collect();
     let linked_only: std::collections::HashMap<String, hematite_types::bin::BinTree> = parsed_bins
         .iter()
         .filter(|(k, _)| !primary_bin_paths.contains(*k))
@@ -427,7 +437,7 @@ fn process_wad_file(
         .filter(|v| v.is_available());
 
     // Process primary BIN files
-    for (path, _) in &bin_chunks {
+    for (_, path, _) in &bin_chunks {
         let Some(tree) = parsed_bins.remove(path) else {
             continue; // Already warned during parse
         };
@@ -444,6 +454,19 @@ fn process_wad_file(
         };
 
         let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
+
+        // Log fixes applied to this specific BIN
+        if result.fixes_applied > 0 {
+            tracing::info!("  {} - {} fixes applied:", path, result.fixes_applied);
+            for fix in &result.applied_fixes {
+                tracing::info!(
+                    "    ✓ {} ({} changes)",
+                    fix.fix_name,
+                    fix.changes_count
+                );
+            }
+        }
+
         let fixes_applied = result.fixes_applied;
         total_result.merge(result);
 
@@ -452,7 +475,7 @@ fn process_wad_file(
             match bin_provider.write_bytes(&ctx.tree) {
                 Ok(modified_bytes) => {
                     // Update the BIN bytes in all_files
-                    if let Some((_, file_bytes)) = all_files.iter_mut().find(|(p, _)| p == path) {
+                    if let Some((_, _, file_bytes)) = all_files.iter_mut().find(|(_, p, _)| p == path) {
                         let old_size = file_bytes.len();
                         *file_bytes = modified_bytes;
                         tracing::debug!(
@@ -480,7 +503,7 @@ fn process_wad_file(
     if check {
         use hematite_core::detect::skin::SkinDetector;
 
-        let all_paths: Vec<String> = all_files.iter().map(|(p, _)| p.clone()).collect();
+        let all_paths: Vec<String> = all_files.iter().map(|(_, p, _)| p.clone()).collect();
         let detector = SkinDetector::new();
         let skin_info = detector.detect_from_paths(&all_paths);
 
@@ -511,16 +534,15 @@ fn process_wad_file(
     if !dry_run && (total_result.fixes_applied > 0 || !shared_files_to_remove.is_empty()) {
         use league_toolkit::wad::{WadBuilder, WadChunkBuilder};
         use std::io::Write;
-        use xxhash_rust::xxh64::xxh64;
 
         tracing::info!("Building modified WAD...");
 
         let mut builder = WadBuilder::default();
         let mut chunks_included = 0;
 
-        for (path, _) in &all_files {
+        for (hash, path, _) in &all_files {
             if !shared_files_to_remove.contains(path) {
-                builder = builder.with_chunk(WadChunkBuilder::default().with_path(path));
+                builder = builder.with_chunk(WadChunkBuilder::default().with_hash(*hash));
                 chunks_included += 1;
             } else {
                 tracing::debug!("Excluding removed file: {}", path);
@@ -532,9 +554,9 @@ fn process_wad_file(
             std::fs::File::create(&output_path).context("Failed to create output WAD file")?;
 
         builder.build_to_writer(&mut output_file, |path_hash, cursor| {
-            let (path, bytes) = all_files
+            let (_, path, bytes) = all_files
                 .iter()
-                .find(|(p, _)| xxh64(p.to_lowercase().as_bytes(), 0) == path_hash)
+                .find(|(h, _, _)| *h == path_hash)
                 .ok_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::NotFound,

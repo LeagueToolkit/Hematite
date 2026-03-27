@@ -800,7 +800,7 @@ dependencies = [
  "hematite-types",
  "indexmap",
  "league-toolkit",
- "ltk_primitives",
+ "ltk_primitives 0.3.2 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "ltk_texture",
  "page_size",
  "tracing",
@@ -1192,11 +1192,11 @@ version = "0.2.18"
 source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "ltk_anim",
- "ltk_file",
+ "ltk_file 0.2.8 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "ltk_hash",
  "ltk_mesh",
  "ltk_meta",
- "ltk_primitives",
+ "ltk_primitives 0.3.2 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "ltk_texture",
  "ltk_wad",
 ]
@@ -1252,9 +1252,16 @@ dependencies = [
  "byteorder",
  "glam",
  "ltk_hash",
- "ltk_io_ext",
+ "ltk_io_ext 0.4.1 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "num_enum",
  "thiserror",
+]
+
+[[package]]
+name = "ltk_file"
+version = "0.2.8"
+dependencies = [
+ "strum",
 ]
 
 [[package]]
@@ -1273,11 +1280,21 @@ source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff
 [[package]]
 name = "ltk_io_ext"
 version = "0.4.1"
+dependencies = [
+ "byteorder",
+ "glam",
+ "ltk_primitives 0.3.2",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_io_ext"
+version = "0.4.1"
 source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "byteorder",
  "glam",
- "ltk_primitives",
+ "ltk_primitives 0.3.2 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "thiserror",
 ]
 
@@ -1290,8 +1307,8 @@ dependencies = [
  "byteorder",
  "glam",
  "lazy_static",
- "ltk_io_ext",
- "ltk_primitives",
+ "ltk_io_ext 0.4.1 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
+ "ltk_primitives 0.3.2 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "num_enum",
  "thiserror",
 ]
@@ -1306,11 +1323,20 @@ dependencies = [
  "glam",
  "indexmap",
  "log",
- "ltk_io_ext",
- "ltk_primitives",
+ "ltk_io_ext 0.4.1 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
+ "ltk_primitives 0.3.2 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "miette",
  "num_enum",
  "paste",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_primitives"
+version = "0.3.2"
+dependencies = [
+ "byteorder",
+ "glam",
  "thiserror",
 ]
 
@@ -1335,7 +1361,7 @@ dependencies = [
  "image",
  "image_dds",
  "intel_tex_2",
- "ltk_io_ext",
+ "ltk_io_ext 0.4.1 (git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4)",
  "num_enum",
  "texture2ddecoder",
  "thiserror",
@@ -1344,14 +1370,13 @@ dependencies = [
 [[package]]
 name = "ltk_wad"
 version = "0.2.13"
-source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=ca8eff4#ca8eff48b2210c89d63dd07692acb29f1a3e55f4"
 dependencies = [
  "byteorder",
  "camino",
  "flate2",
  "itertools",
- "ltk_file",
- "ltk_io_ext",
+ "ltk_file 0.2.8",
+ "ltk_io_ext 0.4.1",
  "memchr",
  "num_enum",
  "thiserror",

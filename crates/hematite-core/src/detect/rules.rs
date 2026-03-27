@@ -597,6 +597,10 @@ mod tests {
         fn is_loaded(&self) -> bool {
             !self.types.is_empty()
         }
+
+        fn has_game_path(&self, _path: &str) -> bool {
+            false
+        }
     }
 
     struct MockWadProvider {

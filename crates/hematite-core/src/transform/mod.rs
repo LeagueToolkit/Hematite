@@ -61,7 +61,11 @@ pub fn apply_transform(
         TransformAction::RenameHash { from_hash, to_hash } => {
             rename_hash::apply(ctx, from_hash, to_hash)
         }
-        TransformAction::ReplaceStringExtension { from, to } => replace_ext::apply(ctx, from, to),
+        TransformAction::ReplaceStringExtension {
+            from,
+            to,
+            path_prefixes,
+        } => replace_ext::apply(ctx, from, to, path_prefixes),
         TransformAction::RemoveFromWad => remove::apply(ctx),
         TransformAction::ChangeFieldType {
             from_type,

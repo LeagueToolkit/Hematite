@@ -12,6 +12,9 @@ version = "0.2.0"
 edition = "2021"
 authors = ["RitoShark"]
 
+[patch."https://github.com/LeagueToolkit/league-toolkit"]
+ltk_wad = { path = "../league-toolkit/crates/ltk_wad" }
+
 [workspace.dependencies]
 # Shared across crates
 serde = { version = "1.0", features = ["derive"] }

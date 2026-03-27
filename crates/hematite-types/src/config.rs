@@ -119,7 +119,12 @@ pub enum TransformAction {
 
     /// Replace file extension in all string values (e.g. .dds → .tex).
     #[serde(rename = "replace_string_extension")]
-    ReplaceStringExtension { from: String, to: String },
+    ReplaceStringExtension {
+        from: String,
+        to: String,
+        #[serde(default)]
+        path_prefixes: Vec<String>,
+    },
 
     /// Mark file for removal from WAD.
     #[serde(rename = "remove_from_wad")]
