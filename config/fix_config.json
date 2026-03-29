@@ -217,7 +217,7 @@
     "wad_fixes": {
         "bnk_remover": {
             "name": "Broken Sound Files",
-            "description": "Removes BNK audio files with outdated versions",
+            "description": "Removes BNK audio files with outdated Wwise versions (only v145+ is valid)",
             "enabled": true,
             "severity": "low",
             "detect": {
@@ -228,11 +228,8 @@
                     "offset": 8,
                     "size": 4,
                     "endian": "little",
-                    "allowed_versions": [134, 145]
-                },
-                "exclude_files": [
-                    "sfx_events.bnk"
-                ]
+                    "allowed_versions": [145]
+                }
             },
             "apply": {
                 "type": "remove_file"
