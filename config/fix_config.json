@@ -1,5 +1,5 @@
 {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "last_updated": "2026-03-22",
     "fixes": {
         "healthbar_fix": {
@@ -228,7 +228,9 @@
                     "offset": 8,
                     "size": 4,
                     "endian": "little",
-                    "allowed_versions": [145]
+                    "allowed_versions": [
+                        145
+                    ]
                 }
             },
             "apply": {
