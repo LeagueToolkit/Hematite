@@ -12,8 +12,6 @@ version = "0.3.1"
 edition = "2021"
 authors = ["RitoShark"]
 
-[patch."https://github.com/LeagueToolkit/league-toolkit"]
-ltk_wad = { path = "../league-toolkit/crates/ltk_wad" }
 
 [workspace.dependencies]
 # Shared across crates

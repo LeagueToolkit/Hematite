@@ -37,6 +37,3 @@ const_format = "0.2"
 # Hash database decompression
 zstd = "0.13"
 
-# WAD building and hashing (for write-back)
-league-toolkit = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "ca8eff4", features = ["wad"] }
-xxhash-rust = { version = "0.8", features = ["xxh64"] }

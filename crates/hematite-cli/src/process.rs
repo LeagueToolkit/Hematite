@@ -532,42 +532,15 @@ fn process_wad_file(
     // === WAD REBUILDING ===
     // Write modified WAD if any changes were made and not dry-run
     if !dry_run && (total_result.fixes_applied > 0 || !shared_files_to_remove.is_empty()) {
-        use league_toolkit::wad::{WadBuilder, WadChunkBuilder};
-        use std::io::Write;
-
         tracing::info!("Building modified WAD...");
-
-        let mut builder = WadBuilder::default();
-        let mut chunks_included = 0;
-
-        for (hash, path, _) in &all_files {
-            if !shared_files_to_remove.contains(path) {
-                builder = builder.with_chunk(WadChunkBuilder::default().with_hash(*hash));
-                chunks_included += 1;
-            } else {
-                tracing::debug!("Excluding removed file: {}", path);
-            }
-        }
 
         let output_path = file.with_extension("fixed.wad.client");
         let mut output_file =
             std::fs::File::create(&output_path).context("Failed to create output WAD file")?;
 
-        builder.build_to_writer(&mut output_file, |path_hash, cursor| {
-            let (_, path, bytes) = all_files
-                .iter()
-                .find(|(h, _, _)| *h == path_hash)
-                .ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!("Missing file for hash {:016X}", path_hash),
-                    )
-                })?;
-
-            tracing::trace!("Writing chunk: {} ({} bytes)", path, bytes.len());
-            cursor.write_all(bytes)?;
-            Ok(())
-        })?;
+        let chunks_included =
+            hematite_ltk::wad_builder::build_wad(&all_files, &shared_files_to_remove, &mut output_file)
+                .context("Failed to build output WAD")?;
 
         tracing::info!("✓ Wrote fixed WAD to: {}", output_path.display());
         tracing::info!(
