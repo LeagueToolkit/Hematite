@@ -1,6 +1,12 @@
 {
-    "version": "2.0.1",
-    "last_updated": "2026-03-22",
+    "version": "2.1.0",
+    "last_updated": "2026-03-30",
+    "repath": {
+        "enabled": true,
+        "prefix": "hematite",
+        "invis_texture": true,
+        "skip_vo": true
+    },
     "fixes": {
         "healthbar_fix": {
             "name": "Missing HP Bar",

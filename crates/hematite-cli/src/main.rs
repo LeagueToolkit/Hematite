@@ -72,17 +72,22 @@ fn run() -> Result<()> {
     // In check mode, force dry_run
     let dry_run = cli.dry_run || cli.check;
 
-    // Build repath options (only active when --repath is passed)
-    let repath_opts: Option<RepathOptions> = if cli.repath {
-        let prefix = cli
-            .repath_prefix
-            .clone()
-            .unwrap_or_else(|| "bum".to_string());
-        let mut opts = RepathOptions::new(prefix);
-        opts.invis_texture = cli.invis_texture;
-        Some(opts)
-    } else {
-        None
+    // Build repath options.
+    // Priority: CLI flags > fix_config.json repath section.
+    // --repath flag or config.repath.enabled activates repathing.
+    let repath_opts: Option<RepathOptions> = {
+        let cfg = &config.repath;
+        let active = cli.repath || cfg.enabled;
+        if active {
+            let prefix = cli.repath_prefix.clone().unwrap_or_else(|| cfg.prefix.clone());
+            let mut opts = RepathOptions::new(prefix);
+            // CLI --invis-texture overrides config; config is the fallback
+            opts.invis_texture = cli.invis_texture || cfg.invis_texture;
+            opts.skip_vo = cfg.skip_vo;
+            Some(opts)
+        } else {
+            None
+        }
     };
 
     // Process input

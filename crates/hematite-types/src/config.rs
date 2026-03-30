@@ -20,6 +20,50 @@ pub struct FixConfig {
     /// WAD-level fixes (operate on files before BIN parsing)
     #[serde(default)]
     pub wad_fixes: HashMap<String, WadFixRule>,
+    /// Default repath settings (can be overridden by CLI flags).
+    /// When `enabled` is true, drag-and-drop runs repathing automatically.
+    #[serde(default)]
+    pub repath: RepathConfig,
+}
+
+/// Default repath settings stored in `fix_config.json`.
+///
+/// CLI flags (`--repath`, `--repath-prefix`, `--invis-texture`) always take
+/// precedence over these values.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepathConfig {
+    /// Run repathing automatically even without `--repath` flag.
+    /// Set to `true` to make drag-and-drop repath by default.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Prefix inserted after the first "/" of every asset path.
+    #[serde(default = "default_repath_prefix")]
+    pub prefix: String,
+    /// Inject invisible `.tex` placeholders for missing repathed textures.
+    #[serde(default)]
+    pub invis_texture: bool,
+    /// Skip voice-over audio paths (should almost always stay `true`).
+    #[serde(default = "default_true")]
+    pub skip_vo: bool,
+}
+
+fn default_repath_prefix() -> String {
+    "bum".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for RepathConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            prefix: default_repath_prefix(),
+            invis_texture: false,
+            skip_vo: true,
+        }
+    }
 }
 
 /// A single fix rule.
