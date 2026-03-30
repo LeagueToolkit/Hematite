@@ -5,18 +5,34 @@
 use anyhow::{Context, Result};
 use hematite_core::context::FixContext;
 use hematite_core::pipeline::apply_fixes;
+use hematite_core::repath as repath_core;
 use hematite_core::traits::{BinProvider, HashProvider};
 use hematite_core::wad_pipeline::converters::ConverterRegistry;
 use hematite_ltk::{
     bin_adapter::LtkBinProvider, hash_adapter::TxtHashProvider,
     lmdb_hash_adapter::LmdbHashProvider, mesh_converter, texture_converter,
+    wad_adapter::wad_path_hash,
 };
 use hematite_types::champion::CharacterRelations;
 use hematite_types::config::FixConfig;
+use hematite_types::repath::RepathOptions;
 use hematite_types::result::{CheckInfo, ProcessResult};
 use std::path::Path;
 use std::sync::Arc;
 use walkdir::WalkDir;
+
+/// Session-level parameters shared by every file processing function.
+///
+/// Bundles together the options that are constant for the entire run so that
+/// individual `process_*` functions stay within Clippy's argument-count limit.
+struct ProcessContext<'a> {
+    config: &'a FixConfig,
+    selected_fixes: &'a [String],
+    champions: &'a CharacterRelations,
+    dry_run: bool,
+    check: bool,
+    repath_opts: Option<&'a RepathOptions>,
+}
 
 /// Load hash provider with LMDB fallback to TXT.
 fn load_hash_provider() -> Result<Arc<dyn HashProvider>> {
@@ -52,9 +68,19 @@ pub fn process_input(
     champions: &CharacterRelations,
     dry_run: bool,
     check: bool,
+    repath_opts: Option<&RepathOptions>,
 ) -> Result<ProcessResult> {
     // Load hash provider once for all files
     let hash_provider = load_hash_provider()?;
+
+    let ctx = ProcessContext {
+        config,
+        selected_fixes,
+        champions,
+        dry_run,
+        check,
+        repath_opts,
+    };
 
     let mut total_result = ProcessResult::default();
 
@@ -64,28 +90,12 @@ pub fn process_input(
             let path = entry.path();
 
             if path.is_file() && is_supported_file(path) {
-                let result = process_file_with_hashes(
-                    path,
-                    config,
-                    selected_fixes,
-                    champions,
-                    dry_run,
-                    &hash_provider,
-                    check,
-                )?;
+                let result = process_file_with_hashes(path, &ctx, &hash_provider)?;
                 total_result.merge(result);
             }
         }
     } else {
-        total_result = process_file_with_hashes(
-            input,
-            config,
-            selected_fixes,
-            champions,
-            dry_run,
-            &hash_provider,
-            check,
-        )?;
+        total_result = process_file_with_hashes(input, &ctx, &hash_provider)?;
     }
 
     Ok(total_result)
@@ -111,12 +121,8 @@ fn is_supported_file(path: &Path) -> bool {
 /// Process a single file based on its type (with hash provider).
 fn process_file_with_hashes(
     file: &Path,
-    config: &FixConfig,
-    selected_fixes: &[String],
-    champions: &CharacterRelations,
-    dry_run: bool,
+    ctx: &ProcessContext<'_>,
     hash_provider: &Arc<dyn HashProvider>,
-    check: bool,
 ) -> Result<ProcessResult> {
     let ext = file
         .extension()
@@ -131,35 +137,11 @@ fn process_file_with_hashes(
         .unwrap_or_default();
 
     if ext == "bin" {
-        process_bin_file(
-            file,
-            config,
-            selected_fixes,
-            champions,
-            dry_run,
-            hash_provider,
-            check,
-        )
+        process_bin_file(file, ctx, hash_provider)
     } else if file_name.ends_with(".wad.client") {
-        process_wad_file(
-            file,
-            config,
-            selected_fixes,
-            champions,
-            dry_run,
-            hash_provider,
-            check,
-        )
+        process_wad_file(file, ctx, hash_provider)
     } else if ext == "fantome" || ext == "zip" {
-        process_fantome_file(
-            file,
-            config,
-            selected_fixes,
-            champions,
-            dry_run,
-            hash_provider,
-            check,
-        )
+        process_fantome_file(file, ctx, hash_provider)
     } else {
         anyhow::bail!("Unsupported file type: {}", file.display());
     }
@@ -168,13 +150,16 @@ fn process_file_with_hashes(
 /// Process a single .bin file.
 fn process_bin_file(
     file: &Path,
-    config: &FixConfig,
-    selected_fixes: &[String],
-    champions: &CharacterRelations,
-    dry_run: bool,
+    ctx: &ProcessContext<'_>,
     hash_provider: &Arc<dyn HashProvider>,
-    check: bool,
 ) -> Result<ProcessResult> {
+    let (config, selected_fixes, champions, dry_run, check) = (
+        ctx.config,
+        ctx.selected_fixes,
+        ctx.champions,
+        ctx.dry_run,
+        ctx.check,
+    );
     tracing::info!("Processing BIN: {}", file.display());
 
     // Initialize BIN provider
@@ -271,13 +256,17 @@ fn process_bin_file(
 /// and reports results. Writing modified files back is not yet supported.
 fn process_wad_file(
     file: &Path,
-    config: &FixConfig,
-    selected_fixes: &[String],
-    champions: &CharacterRelations,
-    dry_run: bool,
+    ctx: &ProcessContext<'_>,
     hash_provider: &Arc<dyn HashProvider>,
-    check: bool,
 ) -> Result<ProcessResult> {
+    let (config, selected_fixes, champions, dry_run, check, repath_opts) = (
+        ctx.config,
+        ctx.selected_fixes,
+        ctx.champions,
+        ctx.dry_run,
+        ctx.check,
+        ctx.repath_opts,
+    );
     use hematite_core::wad_pipeline;
     use hematite_ltk::wad_adapter::WadFile;
 
@@ -499,6 +488,96 @@ fn process_wad_file(
     // Update total files removed count
     total_result.files_removed = shared_files_to_remove.len() as u32;
 
+    // === REPATH PIPELINE ===
+    // Must run AFTER all BIN fixes so fixes operate on original paths.
+    if let Some(opts) = repath_opts {
+        if !dry_run {
+            let prefix = &opts.prefix;
+            tracing::info!("Repathing assets with prefix \"{}\"...", prefix);
+
+            // 1. Repath all string references inside BIN files.
+            let mut all_new_paths: Vec<String> = Vec::new();
+            let mut repath_bin_count = 0u32;
+
+            for (_, path, bytes) in all_files.iter_mut() {
+                if !path.to_lowercase().ends_with(".bin") {
+                    continue;
+                }
+                match bin_provider.parse_bytes(bytes) {
+                    Ok(mut tree) => {
+                        let result = repath_core::repath_bin_strings(&mut tree, prefix, opts.skip_vo);
+                        if result.strings_repathed > 0 {
+                            match bin_provider.write_bytes(&tree) {
+                                Ok(new_bytes) => {
+                                    repath_bin_count += result.strings_repathed;
+                                    all_new_paths.extend(result.new_paths);
+                                    *bytes = new_bytes;
+                                    tracing::debug!(
+                                        "Repathed {} strings in {}",
+                                        result.strings_repathed,
+                                        path
+                                    );
+                                }
+                                Err(e) => tracing::warn!("Failed to write repathed BIN {}: {}", path, e),
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!("Failed to parse BIN for repathing {}: {}", path, e),
+                }
+            }
+
+            // 2. Rename non-BIN WAD files to their repathed paths.
+            let mut repath_wad_count = 0u32;
+            let repathed: Vec<(u64, String, Vec<u8>)> = all_files
+                .drain(..)
+                .map(|(hash, path, bytes)| {
+                    if let Some(new_path) = repath_core::repath_wad_path(&path, prefix) {
+                        let new_hash = wad_path_hash(&new_path);
+                        repath_wad_count += 1;
+                        (new_hash, new_path, bytes)
+                    } else {
+                        (hash, path, bytes)
+                    }
+                })
+                .collect();
+            all_files = repathed;
+
+            tracing::info!(
+                "  Repathed {} BIN string(s), {} WAD file(s)",
+                repath_bin_count,
+                repath_wad_count
+            );
+
+            if repath_bin_count > 0 || repath_wad_count > 0 {
+                total_result.fixes_applied += 1;
+            }
+
+            // 3. Inject invisible placeholder textures for missing references.
+            if opts.invis_texture && !all_new_paths.is_empty() {
+                let existing_paths: std::collections::HashSet<String> =
+                    all_files.iter().map(|(_, p, _)| p.to_lowercase()).collect();
+
+                let placeholders =
+                    repath_core::missing_invis_placeholders(&existing_paths, &all_new_paths);
+
+                if !placeholders.is_empty() {
+                    tracing::info!("  Injecting {} invis placeholder(s)...", placeholders.len());
+                    for (path, bytes) in placeholders {
+                        let hash = wad_path_hash(&path);
+                        tracing::debug!("  + invis placeholder: {}", path);
+                        all_files.push((hash, path, bytes));
+                    }
+                }
+            }
+        } else {
+            tracing::info!(
+                "[dry-run] Would repath assets with prefix \"{}\"{}",
+                opts.prefix,
+                if opts.invis_texture { " + invis placeholders" } else { "" }
+            );
+        }
+    }
+
     // In check mode, populate CheckInfo with skin detection
     if check {
         use hematite_core::detect::skin::SkinDetector;
@@ -561,13 +640,10 @@ fn process_wad_file(
 /// Extracts WAD files from the ZIP archive and processes each one.
 fn process_fantome_file(
     file: &Path,
-    config: &FixConfig,
-    selected_fixes: &[String],
-    champions: &CharacterRelations,
-    dry_run: bool,
+    ctx: &ProcessContext<'_>,
     hash_provider: &Arc<dyn HashProvider>,
-    check: bool,
 ) -> Result<ProcessResult> {
+    let dry_run = ctx.dry_run;
     tracing::info!("Processing Fantome: {}", file.display());
 
     let zip_file = std::fs::File::open(file).context("Failed to open fantome/zip file")?;
@@ -659,15 +735,7 @@ fn process_fantome_file(
 
     let mut total_result = ProcessResult::default();
     for wad_path in &wad_paths {
-        let result = process_wad_file(
-            wad_path,
-            config,
-            selected_fixes,
-            champions,
-            dry_run,
-            hash_provider,
-            check,
-        )?;
+        let result = process_wad_file(wad_path, ctx, hash_provider)?;
         total_result.merge(result);
     }
 

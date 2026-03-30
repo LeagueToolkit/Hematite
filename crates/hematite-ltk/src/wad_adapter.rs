@@ -9,6 +9,15 @@ use std::io::{BufReader, Cursor, Read, Seek};
 use std::path::Path;
 use xxhash_rust::xxh64::xxh64;
 
+/// Compute the WAD chunk hash for a file path.
+///
+/// League indexes WAD chunks by `xxhash64(path.to_lowercase())`.
+/// Use this when inserting a repathed file into a WAD so the game can
+/// find it at its new path.
+pub fn wad_path_hash(path: &str) -> u64 {
+    xxh64(path.to_lowercase().as_bytes(), 0)
+}
+
 /// WAD provider backed by league-toolkit's ltk_wad.
 ///
 /// Stores only the set of path hashes for fast existence checks.

@@ -85,6 +85,28 @@ pub struct Cli {
     )]
     pub check: bool,
 
+    // Repath flags
+    #[arg(
+        long,
+        help = "Repath mod assets with a prefix to prevent hash collisions with base-game files"
+    )]
+    pub repath: bool,
+
+    #[arg(
+        long,
+        value_name = "PREFIX",
+        help = "Custom repath prefix (default: \"bum\"). E.g. \"--repath-prefix xyz\" turns \
+                assets/characters/… into assets/xyz/characters/…"
+    )]
+    pub repath_prefix: Option<String>,
+
+    #[arg(
+        long,
+        help = "Inject invisible 1×1 placeholder textures for repathed paths missing from the WAD \
+                (prevents black/missing-texture crashes). Requires --repath."
+    )]
+    pub invis_texture: bool,
+
     #[arg(
         long,
         help = "Small mod optimization: only validate paths, don't add fallback assets"

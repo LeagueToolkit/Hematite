@@ -16,5 +16,6 @@ pub mod bin;
 pub mod champion;
 pub mod config;
 pub mod hash;
+pub mod repath;
 pub mod result;
 pub mod wad;

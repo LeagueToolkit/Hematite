@@ -28,6 +28,7 @@ pub mod factory;
 pub mod fallback;
 pub mod filter;
 pub mod pipeline;
+pub mod repath;
 pub mod strings;
 pub mod traits;
 pub mod transform;

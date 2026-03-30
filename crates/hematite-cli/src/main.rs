@@ -19,6 +19,7 @@ mod remote;
 use anyhow::Result;
 use clap::Parser;
 use hematite_types::champion::CharacterRelations;
+use hematite_types::repath::RepathOptions;
 use std::time::Instant;
 
 fn main() {
@@ -71,6 +72,19 @@ fn run() -> Result<()> {
     // In check mode, force dry_run
     let dry_run = cli.dry_run || cli.check;
 
+    // Build repath options (only active when --repath is passed)
+    let repath_opts: Option<RepathOptions> = if cli.repath {
+        let prefix = cli
+            .repath_prefix
+            .clone()
+            .unwrap_or_else(|| "bum".to_string());
+        let mut opts = RepathOptions::new(prefix);
+        opts.invis_texture = cli.invis_texture;
+        Some(opts)
+    } else {
+        None
+    };
+
     // Process input
     let result = process::process_input(
         &cli.input,
@@ -79,6 +93,7 @@ fn run() -> Result<()> {
         &champions,
         dry_run,
         cli.check,
+        repath_opts.as_ref(),
     )?;
 
     // Calculate duration
