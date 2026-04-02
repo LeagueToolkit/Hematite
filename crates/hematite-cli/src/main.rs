@@ -84,6 +84,7 @@ fn run() -> Result<()> {
             // CLI --invis-texture overrides config; config is the fallback
             opts.invis_texture = cli.invis_texture || cfg.invis_texture;
             opts.skip_vo = cfg.skip_vo;
+            opts.game_wad = cli.game_wad.clone();
             Some(opts)
         } else {
             None

@@ -109,6 +109,17 @@ pub struct Cli {
 
     #[arg(
         long,
+        value_name = "PATH",
+        help = "Path to the base-game champion .wad.client (e.g. \
+                \"C:/Riot Games/.../Champions/ahri.wad.client\"). \
+                When set, files referenced by BIN strings but missing from the mod \
+                are extracted from this WAD and included in the output, so the \
+                repathed mod is fully self-contained. Requires --repath."
+    )]
+    pub game_wad: Option<std::path::PathBuf>,
+
+    #[arg(
+        long,
         help = "Small mod optimization: only validate paths, don't add fallback assets"
     )]
     pub small_mod: bool,

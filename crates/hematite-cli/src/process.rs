@@ -495,7 +495,21 @@ fn process_wad_file(
             let prefix = &opts.prefix;
             tracing::info!("Repathing assets with prefix \"{}\"...", prefix);
 
-            // 1. Repath all string references inside BIN files.
+            // 0. If --game-wad is provided, extract missing referenced files from
+            //    the base-game WAD so the mod becomes fully self-contained.
+            let mut game_files_added = 0u32;
+            if let Some(ref game_wad_path) = opts.game_wad {
+                game_files_added =
+                    extract_missing_from_game_wad(game_wad_path, &mut all_files, &bin_provider, hash_provider.as_ref(), opts)?;
+            }
+
+            // 1. Build set of all WAD file paths (mod + any game files we just added).
+            //    Only repath strings that point to files in this set.
+            let wad_paths: std::collections::HashSet<String> = all_files
+                .iter()
+                .map(|(_, p, _)| p.to_lowercase())
+                .collect();
+
             let mut all_new_paths: Vec<String> = Vec::new();
             let mut repath_bin_count = 0u32;
 
@@ -505,7 +519,7 @@ fn process_wad_file(
                 }
                 match bin_provider.parse_bytes(bytes) {
                     Ok(mut tree) => {
-                        let result = repath_core::repath_bin_strings(&mut tree, prefix, opts.skip_vo);
+                        let result = repath_core::repath_bin_strings(&mut tree, prefix, opts.skip_vo, &wad_paths);
                         if result.strings_repathed > 0 {
                             match bin_provider.write_bytes(&tree) {
                                 Ok(new_bytes) => {
@@ -543,9 +557,10 @@ fn process_wad_file(
             all_files = repathed;
 
             tracing::info!(
-                "  Repathed {} BIN string(s), {} WAD file(s)",
+                "  Repathed {} BIN string(s), {} WAD file(s) ({} pulled from game WAD)",
                 repath_bin_count,
-                repath_wad_count
+                repath_wad_count,
+                game_files_added
             );
 
             if repath_bin_count > 0 || repath_wad_count > 0 {
@@ -800,4 +815,113 @@ fn process_fantome_file(
     }
 
     Ok(total_result)
+}
+
+/// Extract files referenced by BIN strings but missing from the mod WAD.
+///
+/// Opens the base-game `.wad.client` at `game_wad_path`, scans all BIN files
+/// in `all_files` for asset-path strings, identifies which ones are missing
+/// from the mod, and extracts them from the game WAD.  The extracted files are
+/// appended to `all_files` so the subsequent repath step can repath everything.
+///
+/// Returns the number of files pulled from the game WAD.
+fn extract_missing_from_game_wad(
+    game_wad_path: &Path,
+    all_files: &mut Vec<(u64, String, Vec<u8>)>,
+    bin_provider: &LtkBinProvider,
+    hash_provider: &dyn HashProvider,
+    opts: &RepathOptions,
+) -> Result<u32> {
+    use hematite_ltk::wad_adapter::WadFile;
+
+    tracing::info!(
+        "Opening game WAD for missing file extraction: {}",
+        game_wad_path.display()
+    );
+
+    // 1. Collect all asset paths referenced by BIN files in the mod.
+    let mut referenced: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (_, path, bytes) in all_files.iter() {
+        if !path.to_lowercase().ends_with(".bin") {
+            continue;
+        }
+        if let Ok(tree) = bin_provider.parse_bytes(bytes) {
+            let paths = repath_core::collect_bin_asset_paths(&tree, opts.skip_vo);
+            referenced.extend(paths);
+        }
+    }
+
+    // 2. Build set of paths the mod already has.
+    let mod_paths: std::collections::HashSet<String> = all_files
+        .iter()
+        .map(|(_, p, _)| p.to_lowercase())
+        .collect();
+
+    // 3. Determine which referenced paths are missing (check alternates too).
+    let missing: Vec<String> = referenced
+        .into_iter()
+        .filter(|p| !repath_core::file_in_wad(p, &mod_paths))
+        .collect();
+
+    if missing.is_empty() {
+        tracing::info!("  All referenced files already present in mod — nothing to pull");
+        return Ok(0);
+    }
+
+    tracing::info!(
+        "  {} referenced file(s) missing from mod, extracting from game WAD...",
+        missing.len()
+    );
+
+    // 4. Open game WAD and build a hash→path lookup for extraction.
+    let mut game_wad = WadFile::open(game_wad_path)
+        .with_context(|| format!("Failed to open game WAD: {}", game_wad_path.display()))?;
+
+    let game_files = game_wad
+        .extract_all_files(hash_provider)
+        .context("Failed to extract game WAD")?;
+
+    // Build lowercased path → index lookup for the game WAD
+    let game_lookup: std::collections::HashMap<String, usize> = game_files
+        .iter()
+        .enumerate()
+        .map(|(i, (_, p, _))| (p.to_lowercase(), i))
+        .collect();
+
+    // 5. Pull each missing file from the game WAD.
+    let mut added = 0u32;
+    for missing_path in &missing {
+        // Try exact match first, then extension alternates
+        let found_idx = game_lookup.get(missing_path).copied().or_else(|| {
+            // .dds ↔ .tex
+            if let Some(stem) = missing_path.strip_suffix(".dds") {
+                game_lookup.get(&format!("{}.tex", stem)).copied()
+            } else if let Some(stem) = missing_path.strip_suffix(".tex") {
+                game_lookup.get(&format!("{}.dds", stem)).copied()
+            } else if let Some(stem) = missing_path.strip_suffix(".sco") {
+                game_lookup.get(&format!("{}.scb", stem)).copied()
+            } else if let Some(stem) = missing_path.strip_suffix(".scb") {
+                game_lookup.get(&format!("{}.sco", stem)).copied()
+            } else {
+                None
+            }
+        });
+
+        if let Some(idx) = found_idx {
+            let (hash, path, bytes) = &game_files[idx];
+            all_files.push((*hash, path.clone(), bytes.clone()));
+            added += 1;
+            tracing::debug!("  + pulled from game: {}", path);
+        } else {
+            tracing::debug!("  - not found in game WAD: {}", missing_path);
+        }
+    }
+
+    tracing::info!(
+        "  Pulled {} file(s) from game WAD ({} still missing)",
+        added,
+        missing.len() as u32 - added
+    );
+
+    Ok(added)
 }

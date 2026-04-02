@@ -81,6 +81,80 @@ fn is_repath_candidate(value: &str, skip_vo: bool) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// WAD existence check
+// ---------------------------------------------------------------------------
+
+/// Check whether `path` (or an extension alternate) exists in a WAD path set.
+///
+/// League mods commonly reference `.dds` while shipping `.tex` (or vice-versa)
+/// and `.sco` while shipping `.scb`.  We check all alternates so the BIN
+/// string still gets repathed when the actual file uses a different extension.
+///
+/// Also used by the CLI to determine which referenced files are missing from
+/// the mod and need to be pulled from the game WAD.
+pub fn file_in_wad(path: &str, wad_paths: &HashSet<String>) -> bool {
+    let lower = path.to_lowercase();
+    if wad_paths.contains(&lower) {
+        return true;
+    }
+    // .dds ↔ .tex
+    if let Some(stem) = lower.strip_suffix(".dds") {
+        if wad_paths.contains(&format!("{}.tex", stem)) {
+            return true;
+        }
+    } else if let Some(stem) = lower.strip_suffix(".tex") {
+        if wad_paths.contains(&format!("{}.dds", stem)) {
+            return true;
+        }
+    }
+    // .sco ↔ .scb
+    if let Some(stem) = lower.strip_suffix(".sco") {
+        if wad_paths.contains(&format!("{}.scb", stem)) {
+            return true;
+        }
+    } else if let Some(stem) = lower.strip_suffix(".scb") {
+        if wad_paths.contains(&format!("{}.sco", stem)) {
+            return true;
+        }
+    }
+    false
+}
+
+// ---------------------------------------------------------------------------
+// BIN asset path collection (read-only)
+// ---------------------------------------------------------------------------
+
+/// Collect all asset-path strings from a BIN tree without modifying it.
+///
+/// Returns lowercased paths that match [`ASSET_PREFIXES`] (and optionally
+/// excluding VO paths).  Used to discover which files BINs reference so the
+/// caller can pull missing ones from a game WAD before repathing.
+pub fn collect_bin_asset_paths(tree: &BinTree, skip_vo: bool) -> Vec<String> {
+    struct CollectVisitor {
+        skip_vo: bool,
+        paths: Vec<String>,
+    }
+
+    impl PropertyVisitor for CollectVisitor {
+        fn visit_string(&mut self, value: &str, _field_hash: FieldHash) -> VisitResult {
+            if is_repath_candidate(value, self.skip_vo) {
+                self.paths.push(value.to_lowercase());
+            }
+            VisitResult::Skip
+        }
+    }
+
+    let mut visitor = CollectVisitor {
+        skip_vo,
+        paths: Vec::new(),
+    };
+
+    let mut tree_clone = tree.clone();
+    walk_tree(&mut tree_clone, &mut visitor);
+    visitor.paths
+}
+
+// ---------------------------------------------------------------------------
 // BIN repathing
 // ---------------------------------------------------------------------------
 
@@ -95,30 +169,48 @@ pub struct RepathBinResult {
 
 /// Repath all asset string references in a BIN tree and collect the new paths.
 ///
+/// Only repaths strings whose file actually exists in `wad_paths` (the set of
+/// lowercased WAD entry paths in the mod).  Strings referencing base-game
+/// assets that the mod doesn't ship are left untouched — repathing them would
+/// create broken references since the repathed file doesn't exist.
+///
+/// Also checks `.dds` ↔ `.tex` and `.sco` ↔ `.scb` alternates so that a BIN
+/// string `"foo.dds"` is still repathed when the WAD ships `"foo.tex"`.
+///
 /// Modifies `tree` in-place.  Returns [`RepathBinResult`] with the change
 /// count and the set of repathed paths (already lowercased for hash lookups).
-pub fn repath_bin_strings(tree: &mut BinTree, prefix: &str, skip_vo: bool) -> RepathBinResult {
+pub fn repath_bin_strings(
+    tree: &mut BinTree,
+    prefix: &str,
+    skip_vo: bool,
+    wad_paths: &HashSet<String>,
+) -> RepathBinResult {
     struct RepathVisitor<'a> {
         prefix: &'a str,
         skip_vo: bool,
+        wad_paths: &'a HashSet<String>,
         new_paths: Vec<String>,
     }
 
     impl<'a> PropertyVisitor for RepathVisitor<'a> {
         fn visit_string(&mut self, value: &str, _field_hash: FieldHash) -> VisitResult {
-            if is_repath_candidate(value, self.skip_vo) {
-                let new_path = insert_prefix(value, self.prefix);
-                self.new_paths.push(new_path.to_lowercase());
-                VisitResult::Mutate(new_path)
-            } else {
-                VisitResult::Skip
+            if !is_repath_candidate(value, self.skip_vo) {
+                return VisitResult::Skip;
             }
+            // Only repath if the file (or an extension alternate) exists in the mod WAD.
+            if !file_in_wad(value, self.wad_paths) {
+                return VisitResult::Skip;
+            }
+            let new_path = insert_prefix(value, self.prefix);
+            self.new_paths.push(new_path.to_lowercase());
+            VisitResult::Mutate(new_path)
         }
     }
 
     let mut visitor = RepathVisitor {
         prefix,
         skip_vo,
+        wad_paths,
         new_paths: Vec::new(),
     };
 
@@ -275,13 +367,91 @@ mod tests {
         );
         tree.objects.insert(0x5678, obj);
 
-        let result = repath_bin_strings(&mut tree, "bum", true);
+        // File exists in WAD → should be repathed
+        let wad_paths: HashSet<String> = vec![
+            "assets/characters/aatrox/skins/skin0/texture.dds".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let result = repath_bin_strings(&mut tree, "bum", true, &wad_paths);
         assert_eq!(result.strings_repathed, 1);
         assert_eq!(result.new_paths.len(), 1);
         assert_eq!(
             result.new_paths[0],
             "assets/bum/characters/aatrox/skins/skin0/texture.dds"
         );
+    }
+
+    #[test]
+    fn test_repath_bin_strings_skips_base_game_refs() {
+        use hematite_types::bin::{BinObject, BinProperty, BinTree};
+        use hematite_types::hash::{PathHash, TypeHash};
+        use indexmap::IndexMap;
+        use hematite_types::bin::PropertyValue;
+
+        let mut tree = BinTree::default();
+        let mut obj = BinObject {
+            class_hash: TypeHash(0x1234),
+            path_hash: PathHash(0x5678),
+            properties: IndexMap::new(),
+        };
+        // This path references a base-game asset NOT in the mod WAD
+        obj.properties.insert(
+            0x1,
+            BinProperty {
+                name_hash: FieldHash(0x1),
+                value: PropertyValue::String(
+                    "assets/characters/aatrox/skins/base/aatrox_base.skn".to_string(),
+                ),
+            },
+        );
+        tree.objects.insert(0x5678, obj);
+
+        // WAD only has skin0 texture, not the base SKN
+        let wad_paths: HashSet<String> = vec![
+            "assets/characters/aatrox/skins/skin0/texture.dds".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let result = repath_bin_strings(&mut tree, "bum", true, &wad_paths);
+        assert_eq!(result.strings_repathed, 0); // Must NOT repath base-game refs
+    }
+
+    #[test]
+    fn test_repath_bin_strings_dds_tex_alternate() {
+        use hematite_types::bin::{BinObject, BinProperty, BinTree};
+        use hematite_types::hash::{PathHash, TypeHash};
+        use indexmap::IndexMap;
+        use hematite_types::bin::PropertyValue;
+
+        let mut tree = BinTree::default();
+        let mut obj = BinObject {
+            class_hash: TypeHash(0x1234),
+            path_hash: PathHash(0x5678),
+            properties: IndexMap::new(),
+        };
+        // BIN references .dds but WAD has .tex
+        obj.properties.insert(
+            0x1,
+            BinProperty {
+                name_hash: FieldHash(0x1),
+                value: PropertyValue::String(
+                    "assets/characters/aatrox/skins/skin0/texture.dds".to_string(),
+                ),
+            },
+        );
+        tree.objects.insert(0x5678, obj);
+
+        let wad_paths: HashSet<String> = vec![
+            "assets/characters/aatrox/skins/skin0/texture.tex".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let result = repath_bin_strings(&mut tree, "bum", true, &wad_paths);
+        assert_eq!(result.strings_repathed, 1); // Should still repath via .tex alternate
     }
 
     #[test]
@@ -308,7 +478,13 @@ mod tests {
         );
         tree.objects.insert(0x5678, obj);
 
-        let result = repath_bin_strings(&mut tree, "bum", true);
+        let wad_paths: HashSet<String> = vec![
+            "assets/sounds/wwise2016/vo/aatrox/en_us/aatrox_base_vo.bnk".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let result = repath_bin_strings(&mut tree, "bum", true, &wad_paths);
         assert_eq!(result.strings_repathed, 0);
     }
 

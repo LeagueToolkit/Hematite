@@ -1,5 +1,7 @@
 //! Repath configuration types.
 
+use std::path::PathBuf;
+
 /// Options controlling the asset-repath pipeline.
 ///
 /// Repathing inserts a prefix after the first "/" of every asset path
@@ -25,6 +27,13 @@ pub struct RepathOptions {
     /// Defaults to `true` — VO files must always stay at their original
     /// paths so the game can find them.
     pub skip_vo: bool,
+
+    /// Path to the base-game champion `.wad.client`.
+    ///
+    /// When set, files referenced by BIN strings but absent from the mod
+    /// are extracted from this WAD and included in the output so the
+    /// repathed mod is fully self-contained (like League-Mod-Repather).
+    pub game_wad: Option<PathBuf>,
 }
 
 impl RepathOptions {
@@ -34,6 +43,7 @@ impl RepathOptions {
             prefix: prefix.into(),
             invis_texture: false,
             skip_vo: true,
+            game_wad: None,
         }
     }
 }
