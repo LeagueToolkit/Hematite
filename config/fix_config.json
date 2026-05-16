@@ -218,6 +218,48 @@
                     }
                 ]
             }
+        },
+        "vfx_entry_split": {
+            "name": "VFX Entry Separation",
+            "description": "Extracts every VfxSystemDefinitionData entry into a sibling BIN at {champion}_vfx_skin{skin}.bin and links it from the source. Reduces skin0.bin bloat and matches the layout Riot ships natively. Disabled by default until validated on real mods.",
+            "enabled": false,
+            "severity": "low",
+            "detect": {
+                "type": "entry_type_exists_any",
+                "entry_types": [
+                    "VfxSystemDefinitionData"
+                ]
+            },
+            "apply": {
+                "type": "split_entries_by_type",
+                "entry_types": [
+                    "VfxSystemDefinitionData"
+                ],
+                "output_path_template": "data/characters/{champion}/skins/{champion}_vfx_skin{skin}.bin",
+                "link_in_source": true
+            }
+        },
+        "hud_icon_dds_to_tex": {
+            "name": "HUD icon .dds → .tex (field-scoped)",
+            "description": "Rewrite .dds → .tex only on iconCircle / iconSquare / iconAvatar fields. Game expects .tex for HUD icons; this leaves non-HUD .dds refs untouched.",
+            "enabled": false,
+            "severity": "medium",
+            "detect": {
+                "type": "recursive_string_extension_not_in_wad",
+                "extension": ".dds",
+                "path_prefixes": [
+                    "assets/characters/"
+                ]
+            },
+            "apply": {
+                "type": "replace_string_extension",
+                "from": ".dds",
+                "to": ".tex",
+                "path_prefixes": [
+                    "assets/characters/"
+                ],
+                "field_filter": "(?i)icon(circle|square|avatar)"
+            }
         }
     },
     "wad_fixes": {
@@ -286,6 +328,67 @@
             },
             "apply": {
                 "type": "remove_file"
+            }
+        },
+        "strip_mipmaps_tex": {
+            "name": "Strip Mipmaps (TEX)",
+            "description": "Drops the mip chain from TEX textures. Workaround for the post-2026 League regression where mipmapped textures stop rendering. Disabled by default — opt in per-run if the mod ships affected textures.",
+            "enabled": false,
+            "severity": "low",
+            "detect": {
+                "type": "file_extension",
+                "extension": ".tex"
+            },
+            "apply": {
+                "type": "transform_bytes",
+                "converter": "strip_mipmaps"
+            }
+        },
+        "strip_mipmaps_dds": {
+            "name": "Strip Mipmaps (DDS)",
+            "description": "Drops the mip chain from DDS textures. Pairs with strip_mipmaps_tex.",
+            "enabled": false,
+            "severity": "low",
+            "detect": {
+                "type": "file_extension",
+                "extension": ".dds"
+            },
+            "apply": {
+                "type": "transform_bytes",
+                "converter": "strip_mipmaps"
+            }
+        },
+        "fix_tex_dimensions": {
+            "name": "TEX Dimension Fix",
+            "description": "Rounds non-block-aligned TEX dimensions down to the nearest multiple of 4 and crops the pixel data. Prevents the noise/crash you get on BC1/BC3 textures with odd dimensions.",
+            "enabled": true,
+            "severity": "high",
+            "detect": {
+                "type": "file_extension",
+                "extension": ".tex"
+            },
+            "apply": {
+                "type": "transform_bytes",
+                "converter": "fix_tex_dims"
+            }
+        },
+        "inject_invis_tex_placeholder": {
+            "name": "Inject Default Invisible Texture",
+            "description": "Always-present invisible 1×1 .tex at the placeholder path. Other fixes can point repathed missing textures at this single asset instead of injecting per-path duplicates.",
+            "enabled": false,
+            "severity": "low",
+            "detect": {
+                "type": "always"
+            },
+            "apply": {
+                "type": "add_files",
+                "assets": [
+                    {
+                        "asset": "invis_tex",
+                        "path": "assets/hematite/placeholders/invis.tex",
+                        "only_if_missing": true
+                    }
+                ]
             }
         }
     }
