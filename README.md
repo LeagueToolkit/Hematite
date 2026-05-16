@@ -1,234 +1,274 @@
+<!--
+  Hematite — README
+  Animated header banners + typing SVG render on GitHub.com out of the
+  box. They degrade to plain text on local viewers / offline rendering.
+-->
+
 <p align="center">
-  <h1 align="center">Hematite</h1>
-  <p align="center">
-    <strong>High-performance League of Legends custom skin fixer</strong>
-  </p>
-  <p align="center">
-    <a href="https://github.com/LeagueToolkit/Hematite/releases"><img src="https://img.shields.io/github/v/release/LeagueToolkit/Hematite?style=flat-square&label=release&color=blue" alt="Release"></a>
-    <img src="https://img.shields.io/badge/rust-2021_edition-orange?style=flat-square" alt="Rust">
-    <img src="https://img.shields.io/badge/platform-windows-0078D6?style=flat-square" alt="Windows">
-    <img src="https://img.shields.io/badge/tests-84_passing-brightgreen?style=flat-square" alt="Tests">
-    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  </p>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1a2e,50:721121,100:c1272d&height=220&section=header&text=Hematite&fontSize=92&fontColor=ffffff&animation=fadeIn&fontAlignY=42" alt="Hematite banner" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/LeagueToolkit/Hematite/releases">
+    <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=20&duration=3200&pause=900&color=C1272D&center=true&vCenter=true&width=820&lines=Detect+%26+fix+broken+League+of+Legends+skins;Config-driven+rules+%E2%80%94+no+recompile+to+ship+a+fix;1.8M+hashes%2C+loaded+in+%3C1s;Drag.+Drop.+Done." alt="What Hematite does" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/LeagueToolkit/Hematite/releases"><img src="https://img.shields.io/github/v/release/LeagueToolkit/Hematite?style=for-the-badge&label=release&color=c1272d&labelColor=1a1a2e" alt="Release"></a>
+  <img src="https://img.shields.io/badge/rust-2021-c1272d?style=for-the-badge&labelColor=1a1a2e&logo=rust" alt="Rust">
+  <img src="https://img.shields.io/badge/platform-windows-c1272d?style=for-the-badge&labelColor=1a1a2e&logo=windows" alt="Windows">
+  <img src="https://img.shields.io/badge/tests-152_passing-2e7d32?style=for-the-badge&labelColor=1a1a2e" alt="Tests">
+  <img src="https://img.shields.io/badge/config--driven-yes-c1272d?style=for-the-badge&labelColor=1a1a2e" alt="Config-driven">
+</p>
+
+<p align="center">
+  <b>Drop a <code>.fantome</code>, <code>.wad.client</code>, or <code>.bin</code> on Hematite.</b><br/>
+  <sub>It detects, repairs, and writes the file back. Auto-updates fix rules from GitHub. No recompile needed.</sub>
 </p>
 
 ---
 
-Hematite automatically detects and fixes common issues in custom League of Legends skins. Drop in a `.fantome`, `.wad.client`, or `.bin` file and Hematite handles the rest — fixing broken health bars, invisible models, black icons, outdated audio, and more.
+## At a glance
 
-Fix rules are defined in JSON config, so new fixes can be added without recompiling.
+<table>
+<tr>
+<td width="50%" valign="top">
 
-## Features
-
-- **Auto-detect mode** — runs all applicable fixes with zero configuration
-- **Config-driven fixes** — add new fix rules via JSON, no code changes needed
-- **Full write-back** — modified files are written back to disk (BIN, WAD, Fantome)
-- **Batch processing** — drag-and-drop folders, process multiple files with progress tracking
-- **Windows CMD optimized** — colored output, ASCII-friendly symbols, proper ANSI support
-- **LMDB hash system** — loads 1.8M game hashes in under 1 second
-- **Remote config** — fetches latest fix rules from GitHub with offline fallback
-- **Check mode** — detect issues without modifying files, shows champion/skin info
-- **Verbosity levels** — clean output by default, verbose mode for debugging
-- **Security hardened** — ZIP bomb protection, path traversal prevention, size limits
-- **Dry-run mode** — preview what would be fixed before modifying files
-- **JSON output** — machine-readable results for automation pipelines
-
-## Quick Start
+### For users
 
 ```bash
-# Download latest release from GitHub Releases
+# Auto-detect + fix everything
+hematite-cli "skin.fantome"
 
-# Fix a skin mod (auto-detects all issues)
-hematite-cli "path/to/skin.fantome"
-
-# Preview what would be fixed
+# Preview without writing
 hematite-cli "skin.fantome" --dry-run
 
-# Fix specific issues only
-hematite-cli "skin.fantome" --healthbar --vfx-shape
+# Batch a whole folder
+hematite-cli "C:/mods/"
 
-# Process a folder of mods
-hematite-cli "path/to/skins_folder/"
-
-# JSON output for scripts
-hematite-cli "skin.fantome" --json > results.json
+# Detect only — show champion + skin
+hematite-cli "skin.fantome" --check
 ```
 
-## Supported Fixes
+Releases ship at **[github.com/LeagueToolkit/Hematite/releases](https://github.com/LeagueToolkit/Hematite/releases)**.
 
-| Fix | What it does | CLI Flag |
-|-----|-------------|----------|
-| **Health Bar** | Adds missing `UnitHealthBarStyle` field | `--healthbar` |
-| **White Model** | Renames `TextureName`/`SamplerName` to correct hashes | `--white-model` |
-| **Black Icons** | Converts `.dds` references to `.tex` | `--black-icons` |
-| **Broken Particles** | Fixes particle texture paths recursively | `--particles` |
-| **Champion Data** | Removes outdated champion BIN entries | `--remove-champion-bins` |
-| **Audio Files** | Removes BNK files with incompatible Wwise versions | `--remove-bnk` |
-| **Animations** | Removes .anm animation files from mod | `--remove-anm` |
-| **VFX Shape** | Migrates VFX shape data to 14.1+ format | `--vfx-shape` |
-| **Invalid Shaders** | Replaces invalid shader references with closest match | `--fix-shaders` |
-| **Unreferenced Entries** | Removes CAD/AnimGraph/GearSkinUpgrade entries | `--validate-entries` |
+</td>
+<td width="50%" valign="top">
 
-Use `--all` or pass no flags to apply everything.
-
-## Supported File Types
-
-| Format | Description |
-|--------|-------------|
-| `.fantome` / `.zip` | Mod packages (extracts WAD, processes, rebuilds) |
-| `.wad.client` | League asset archives (extracts BINs, fixes, rebuilds WAD) |
-| `.bin` | League property files (parsed, fixed, written as `.fixed.bin`) |
-
-## CLI Reference
-
-```
-hematite-cli [OPTIONS] <INPUT>
-
-Arguments:
-  <INPUT>    File or directory to process (.bin, .wad.client, .fantome, .zip, or folder)
-
-Options:
-  -o, --output <PATH>       Output path (default: creates .fixed.* next to input)
-  -a, --all                 Enable all fixes
-      --dry-run             Show what would be fixed without modifying files
-      --check               Check mode: detect issues without fixing, show skin info
-      --json                JSON output for automation
-  -v, --verbosity <LEVEL>   Verbosity: quiet, normal, verbose, trace [default: normal]
-      --small-mod           Skip fallback assets (for texture-only mods)
-      --all-skins           Process all skins found in mod
-
-Fix flags:
-      --healthbar             Fix missing health bars
-      --white-model           Fix white models
-      --black-icons           Fix black/missing icons
-      --particles             Fix broken particle textures
-      --remove-champion-bins  Remove outdated champion data
-      --remove-bnk            Remove incompatible audio files
-      --remove-anm            Remove .anm animation files
-      --vfx-shape             Fix VFX shape format (14.1+)
-      --fix-shaders           Fix invalid shader references
-      --validate-entries      Remove unreferenced entries
-
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-## Architecture
-
-4-crate Rust workspace. The core engine **never imports league-toolkit** — when LTK changes its API, only the adapter crate needs updating.
-
-```
-hematite-v2/
-├── crates/
-│   ├── hematite-types/   Pure data types, config schema, hash newtypes
-│   ├── hematite-core/    Fix engine: detection, transforms, walker, fallback
-│   ├── hematite-ltk/     LTK adapter: BIN parsing, WAD extraction, converters
-│   └── hematite-cli/     CLI binary: args, logging, file routing, remote config
-├── config/
-│   ├── fix_config.json       Fix rule definitions
-│   └── champion_list.json    Champion metadata + subchamp relationships
-└── .github/workflows/
-    ├── ci.yml                PR checks (fmt + clippy + test)
-    └── release.yml           Tag-triggered release (git-cliff + binary)
-```
-
-### Dependency Graph
-
-```
-hematite-cli ──> hematite-core ──> hematite-types
-                 hematite-ltk  ──> hematite-types + league-toolkit
-```
-
-### Processing Pipeline
-
-```
-Input file
-  │
-  ├─ .fantome/.zip ──> Extract .wad.client to temp dir
-  │                          │
-  ├─ .wad.client ────────────┤
-  │                          ▼
-  │                    Extract all files from WAD
-  │                          │
-  │                    ┌─────┴──────┐
-  │                    │            │
-  │               WAD pipeline   BIN pipeline
-  │               (BNK removal,  (detect → transform
-  │                DDS→TEX,       per BIN file)
-  │                SCO→SCB)           │
-  │                    │              │
-  │                    └─────┬────────┘
-  │                          │
-  │                    Rebuild WAD with modifications
-  │                          │
-  │                    Write .fixed.wad.client
-  │
-  └─ .bin ──────────> Parse → detect → transform → write .fixed.bin
-```
-
-## Hash System
-
-League uses hashed identifiers instead of strings. Hematite loads hash dictionaries at startup for name resolution.
-
-| Hash Kind | Width | Source |
-|-----------|-------|--------|
-| Type hash | u32 | BIN class names (FNV-1a) |
-| Field hash | u32 | BIN field names (FNV-1a) |
-| Path hash | u32 | BIN entry paths (FNV-1a) |
-| Game hash | u64 | WAD asset paths (xxhash64) |
-
-**LMDB** (preferred): Single database file at `%APPDATA%\RitoShark\Requirements\Hashes\hashes.lmdb` — loads 1.8M hashes in ~800ms. Auto-downloaded from GitHub releases on first run.
-
-**TXT fallback**: Individual text files in the same directory (`hashes.bintypes.txt`, `hashes.binfields.txt`, etc.)
-
-## Building from Source
-
-### Requirements
-
-- Rust 1.75+ (2021 edition)
-- Windows (primary target)
-
-### Build
+### For devs
 
 ```bash
-git clone https://github.com/LeagueToolkit/Hematite.git
-cd Hematite
-git checkout v2
-cargo build --release --bin hematite-cli
-# Binary: target/release/hematite-cli.exe
+git clone https://github.com/LeagueToolkit/Hematite
+cd Hematite && git checkout v2
+cargo build --release
+cargo test --workspace      # 152 tests
 ```
 
-### Test
+Full architecture, transform framework, contribution flow → **[DEVELOPER.md](DEVELOPER.md)**.
+
+</td>
+</tr>
+</table>
+
+---
+
+## What gets fixed
+
+<table>
+<tr>
+<th align="left">Symptom</th>
+<th align="left">What Hematite does</th>
+<th align="left">Flag</th>
+</tr>
+<tr><td>Invisible HP bar</td><td>Adds missing <code>UnitHealthBarStyle</code></td><td><code>--healthbar</code></td></tr>
+<tr><td>White / chrome model</td><td>Renames <code>TextureName</code>/<code>SamplerName</code> in materials</td><td><code>--white-model</code></td></tr>
+<tr><td>Black or missing icons</td><td>Rewrites <code>.dds</code> → <code>.tex</code> when the WAD lacks the source</td><td><code>--black-icons</code></td></tr>
+<tr><td>Broken particle textures</td><td>Recursive <code>.dds</code> → <code>.tex</code> conversion</td><td><code>--particles</code></td></tr>
+<tr><td>Outdated champion data</td><td>Removes stale champion BIN entries</td><td><code>--remove-champion-bins</code></td></tr>
+<tr><td>Crackling / silent audio</td><td>Drops BNK files with incompatible Wwise versions</td><td><code>--remove-bnk</code></td></tr>
+<tr><td>Animations that locked the rig</td><td>Removes problematic <code>.anm</code> files</td><td><code>--remove-anm</code></td></tr>
+<tr><td>VFX gone / wrong shape</td><td>Migrates VFX shape data to the 14.1+ layout</td><td><code>--vfx-shape</code></td></tr>
+<tr><td>Invisible model from bad shader</td><td>Replaces invalid shader refs with the closest valid match</td><td><code>--fix-shaders</code></td></tr>
+<tr><td>Orphan entries bloating the BIN</td><td>Removes unreferenced CAD/AnimGraph/GearSkinUpgrade entries</td><td><code>--validate-entries</code></td></tr>
+</table>
+
+<p align="center"><sub>No flags = all of the above. Pass <code>--check</code> to detect only.</sub></p>
+
+---
+
+## What's new in this release
+
+<table>
+<tr>
+<td>
+
+### Texture lifesavers
+- **Mipmap stripping** for the post-2026 League regression that ate mipmapped textures
+- **TEX dimension repair** — rounds non-block-aligned `.tex` dimensions down to multiples of 4 (no more DXT-block crashes)
+
+</td>
+<td>
+
+### Smarter repathing
+- **Modder-root paths** — `reddivinekinggaren/foo.dds` style namespaces now get rewritten properly (closes an 88K-ref gap)
+- **Suffix-strip fallback** — handles Riot's `attack1.matcha_x.anm` → `attack1.anm` rename
+- **`remove_prefix`** helper for the inverse direction
+
+</td>
+</tr>
+<tr>
+<td>
+
+### Smarter detection
+- **Seed discovery** — scans the WAD TOC and surfaces every champion/skin pair (jinx + jinxmine etc.) before fixes run
+- **Field-scoped path rewrites** — `replace_string_extension` now takes a regex on the *field name*, so HUD-only rewrites stop touching material textures
+
+</td>
+<td>
+
+### Always-up-to-date CLI
+- **Force-update gate** — if a critical bug ships, bumping `min_cli_version` in [config/version.json](config/version.json) refuses to run on old CLIs
+- **`--check-version`** to query the gate
+- **`--skip-version-check`** for CI
+
+</td>
+</tr>
+</table>
+
+> Three new transform primitives let configs do more without code: `transform_bytes` (in-place byte ops), `add_files` (inject named assets from the registry), and `split_entries_by_type` (move objects into a sibling BIN). See [DEVELOPER.md](DEVELOPER.md#transform-framework) for the schema.
+
+---
+
+## Quick start
 
 ```bash
-cargo test --workspace            # 84 tests
-cargo clippy --workspace          # Lint check
-cargo fmt --all -- --check        # Format check
+# 1. Grab the binary
+# → https://github.com/LeagueToolkit/Hematite/releases/latest
+
+# 2. Drag a mod onto it, or run from the terminal
+hematite-cli "MyAwesomeSkin.fantome"
+
+# 3. Hematite writes the fixed file next to the original:
+#    MyAwesomeSkin.fixed.fantome
 ```
 
-## Release
+### Supported inputs
 
-Releases are automated via GitHub Actions. Push a version tag to trigger:
+| Format | What happens |
+|---|---|
+| `.fantome` / `.zip` | Extracts every `.wad.client`, processes each, repacks into `.fixed.fantome` |
+| `.wad.client` | Extracts, fixes, rebuilds → `.fixed.wad.client` |
+| `.bin` | Parses, fixes, writes → `.fixed.bin` |
+| Folder | Recurses + processes every supported file (parallel via rayon) |
 
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-# CI: generates changelog (git-cliff) → builds binary → creates GitHub Release
+### Useful flags
+
+| Flag | What it does |
+|---|---|
+| `--check` | Detect only — prints champion / skin / issue count, doesn't touch the file |
+| `--dry-run` | Show what *would* be fixed |
+| `--json` | Emit machine-readable output (skips the "press enter" pause) |
+| `--repath` | Rename mod assets with a unique prefix so they can't collide with the base game |
+| `--game-wad <PATH>` | Pull missing referenced files from the base-game WAD so the mod is self-contained |
+| `--invis-texture` | Inject invisible placeholders for missing texture refs after repath |
+| `-v verbose` | Show every fix as it's applied; `-v trace` for everything |
+
+Run `hematite-cli --help` for the complete flag list with descriptions.
+
+---
+
+## See it in action
+
+<details>
+<summary><b>What a clean run looks like</b></summary>
+
+```
+$ hematite-cli yone-spiritblossom.fantome
+
+[hematite] Loading hash dictionary (1.8M entries) ............. 712ms
+[hematite] Seed discovery: 1 skin across 1 champion
+[hematite] WAD has 1834 total entries, 14 BIN file(s)
+[hematite] WAD-level fix 'TEX Dimension Fix' affected 3 files
+[hematite] WAD-level fix 'DDS → TEX Texture Conversion' affected 8 files
+[hematite] data/characters/yone/skins/skin7.bin
+[hematite]   ✓ Missing HP Bar (1 changes)
+[hematite]   ✓ White Model (TextureName) (4 changes)
+[hematite] Repathing assets with prefix ".yone7_" (layout: InFolder)…
+[hematite] ✓ Renamed 47 WAD entries, rewrote 213 BIN strings
+[hematite] Wrote yone-spiritblossom.fixed.fantome (4.2 MB)
+
+Done — 1 mod processed, 18 fixes applied in 1.9s.
+```
+</details>
+
+<details>
+<summary><b>Force-update banner in the wild</b></summary>
+
+When a critical bug ships, the remote `version.json` bumps `min_cli_version` and every old CLI refuses to run until upgraded:
+
+```
+[BLOCKED] Hematite-CLI 0.3.0 is too old — minimum required is 0.4.0.
+  Fixes BIN parser regression on patch 14.20 mods.
+  Download: https://github.com/LeagueToolkit/Hematite/releases/latest
+  Pass --skip-version-check to override at your own risk.
+
+Error: Refusing to run: CLI is older than the published minimum.
 ```
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/) for automatic changelog generation:
+For non-blocking updates, you get a soft notice instead and the run proceeds.
+</details>
 
-| Prefix | Changelog Section |
-|--------|------------------|
-| `feat:` | Features |
-| `fix:` | Bug Fixes |
-| `perf:` | Performance |
-| `refactor:` | Refactor |
+<details>
+<summary><b>Subcharacter detection</b></summary>
+
+Mods that ship subchampions (Jinx + jinxmine, Annie + Tibbers, Anivia + egg) used to lose those files silently. Now you see them up front:
+
+```
+[hematite] Seed discovery: 2 skins across 2 champions
+[hematite] WAD contains subchampion forms: jinx, jinxmine
+```
+</details>
+
+---
+
+## Configure without recompiling
+
+Every fix rule lives in **[config/fix_config.json](config/fix_config.json)**. Add a rule, push to `main`, the next CLI run picks it up (cached for 1 hour, embedded fallback when offline).
+
+A rule has three parts:
+
+```json
+"my_new_fix": {
+  "name": "Pretty name",
+  "enabled": true,
+  "severity": "medium",
+  "detect": { "type": "...", "...": "..." },
+  "apply":  { "type": "...", "...": "..." }
+}
+```
+
+Detection rules cover field presence, hash existence, file-extension matches, binary header version checks, entry-type lookups, even shader validity. Transforms cover field add/rename, regex replace, file removal, in-place byte transforms, asset injection from the named registry, splitting entries into sibling BINs.
+
+> The full schema and the recipe for adding a brand-new transform action live in **[DEVELOPER.md](DEVELOPER.md)**.
+
+---
+
+## Hash system in one paragraph
+
+League uses 32-bit FNV-1a for class / field / path names and 64-bit xxhash for WAD asset paths. Hematite ships an LMDB containing **1.8M** resolved hashes — loads in under a second, lives under `%APPDATA%\RitoShark\Requirements\Hashes\`, auto-downloads on first run. Falls back to the text files if LMDB is missing.
+
+---
 
 ## Why "Hematite"?
 
 Hematite is the primary ore of iron. When iron oxidizes, it becomes *rust*. This tool is built in Rust and cleans up broken skins — the name fits.
 
----
+<p align="center"><sub>
+  Made by <a href="https://github.com/RitoShark">RitoShark</a> · part of the <a href="https://github.com/LeagueToolkit">LeagueToolkit</a> ecosystem<br/>
+  Have a question, found a bug, want to contribute? → <a href="DEVELOPER.md">DEVELOPER.md</a>
+</sub></p>
 
-**Made by [RitoShark](https://github.com/RitoShark)** | Part of the [LeagueToolkit](https://github.com/LeagueToolkit) ecosystem
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:c1272d,50:721121,100:1a1a2e&height=120&section=footer&animation=fadeIn" alt="footer" />
+</p>
