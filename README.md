@@ -9,13 +9,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeagueToolkit/Hematite/releases">
+  <a href="https://github.com/RitoShark/Hematite/releases">
     <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=20&duration=3200&pause=900&color=C1272D&center=true&vCenter=true&width=820&lines=Detect+%26+fix+broken+League+of+Legends+skins;Config-driven+rules+%E2%80%94+no+recompile+to+ship+a+fix;1.8M+hashes%2C+loaded+in+%3C1s;Drag.+Drop.+Done." alt="What Hematite does" />
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/LeagueToolkit/Hematite/releases"><img src="https://img.shields.io/github/v/release/LeagueToolkit/Hematite?style=for-the-badge&label=release&color=c1272d&labelColor=1a1a2e" alt="Release"></a>
+  <a href="https://github.com/RitoShark/Hematite/releases"><img src="https://img.shields.io/github/v/release/RitoShark/Hematite?style=for-the-badge&label=release&color=c1272d&labelColor=1a1a2e" alt="Release"></a>
   <img src="https://img.shields.io/badge/rust-2021-c1272d?style=for-the-badge&labelColor=1a1a2e&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/platform-windows-c1272d?style=for-the-badge&labelColor=1a1a2e&logo=windows" alt="Windows">
   <img src="https://img.shields.io/badge/tests-152_passing-2e7d32?style=for-the-badge&labelColor=1a1a2e" alt="Tests">
@@ -51,7 +51,7 @@ hematite-cli "C:/mods/"
 hematite-cli "skin.fantome" --check
 ```
 
-Releases ship at **[github.com/LeagueToolkit/Hematite/releases](https://github.com/LeagueToolkit/Hematite/releases)**.
+Releases ship at **[github.com/RitoShark/Hematite/releases](https://github.com/RitoShark/Hematite/releases)**.
 
 </td>
 <td width="50%" valign="top">
@@ -59,7 +59,7 @@ Releases ship at **[github.com/LeagueToolkit/Hematite/releases](https://github.c
 ### For devs
 
 ```bash
-git clone https://github.com/LeagueToolkit/Hematite
+git clone https://github.com/RitoShark/Hematite
 cd Hematite && git checkout v2
 cargo build --release
 cargo test --workspace      # 152 tests
@@ -144,13 +144,15 @@ Full architecture, transform framework, contribution flow → **[DEVELOPER.md](D
 
 ```bash
 # 1. Grab the binary
-# → https://github.com/LeagueToolkit/Hematite/releases/latest
+# → https://github.com/RitoShark/Hematite/releases/latest
 
 # 2. Drag a mod onto it, or run from the terminal
 hematite-cli "MyAwesomeSkin.fantome"
 
 # 3. Hematite writes the fixed file next to the original:
 #    MyAwesomeSkin.fixed.fantome
+#
+# (Same binary works as a drag-target on Windows — no terminal required.)
 ```
 
 ### Supported inputs
@@ -210,7 +212,7 @@ When a critical bug ships, the remote `version.json` bumps `min_cli_version` and
 ```
 [BLOCKED] Hematite-CLI 0.3.0 is too old — minimum required is 0.4.0.
   Fixes BIN parser regression on patch 14.20 mods.
-  Download: https://github.com/LeagueToolkit/Hematite/releases/latest
+  Download: https://github.com/RitoShark/Hematite/releases/latest
   Pass --skip-version-check to override at your own risk.
 
 Error: Refusing to run: CLI is older than the published minimum.
@@ -265,7 +267,7 @@ League uses 32-bit FNV-1a for class / field / path names and 64-bit xxhash for W
 Hematite is the primary ore of iron. When iron oxidizes, it becomes *rust*. This tool is built in Rust and cleans up broken skins — the name fits.
 
 <p align="center"><sub>
-  Made by <a href="https://github.com/RitoShark">RitoShark</a> · part of the <a href="https://github.com/LeagueToolkit">LeagueToolkit</a> ecosystem<br/>
+  Made by <a href="https://github.com/SirDexal">SirDexal</a> · part of the <a href="https://github.com/RitoShark">RitoShark</a> ecosystem<br/>
   Have a question, found a bug, want to contribute? → <a href="DEVELOPER.md">DEVELOPER.md</a>
 </sub></p>
 

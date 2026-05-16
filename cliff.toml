@@ -36,7 +36,7 @@ filter_unconventional = true
 split_commits = false
 # Regex for preprocessing the commit messages
 commit_preprocessors = [
-    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/RitoShark/Skin-Fixer/issues/${2}))" },
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/RitoShark/Hematite/issues/${2}))" },
 ]
 # Regex for parsing and grouping commits
 commit_parsers = [

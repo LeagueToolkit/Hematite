@@ -14,7 +14,7 @@
 //! {
 //!   "latest_cli_version": "0.4.1",
 //!   "min_cli_version": "0.3.0",
-//!   "download_url": "https://github.com/LeagueToolkit/Hematite/releases/latest",
+//!   "download_url": "https://github.com/RitoShark/Hematite/releases/latest",
 //!   "release_notes": "Fixes BIN parser regression on 14.20 mods.",
 //!   "advisories": []
 //! }
@@ -43,7 +43,7 @@ use std::time::{Duration, SystemTime};
 /// Where the version manifest lives. Same repo path as the other configs
 /// so a single edit can ship a new version policy without a binary release.
 const VERSION_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/LeagueToolkit/Hematite/main/config/version.json";
+    "https://raw.githubusercontent.com/RitoShark/Hematite/main/config/version.json";
 
 /// Version manifest is cheap and changes only when we cut a release —
 /// 15 minutes is plenty fresh without hammering GitHub.
@@ -59,7 +59,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const EMBEDDED_MANIFEST_JSON: &str = r#"{
     "latest_cli_version": "0.0.0",
     "min_cli_version": "0.0.0",
-    "download_url": "https://github.com/LeagueToolkit/Hematite/releases/latest",
+    "download_url": "https://github.com/RitoShark/Hematite/releases/latest",
     "release_notes": "",
     "advisories": []
 }"#;
@@ -111,7 +111,7 @@ pub struct VersionManifest {
 }
 
 fn default_download_url() -> String {
-    "https://github.com/LeagueToolkit/Hematite/releases/latest".into()
+    "https://github.com/RitoShark/Hematite/releases/latest".into()
 }
 
 /// Outcome of a single version-check.

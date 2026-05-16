@@ -358,7 +358,7 @@ their own.
 {
   "latest_cli_version": "0.4.1",
   "min_cli_version":    "0.4.0",
-  "download_url": "https://github.com/LeagueToolkit/Hematite/releases/latest",
+  "download_url": "https://github.com/RitoShark/Hematite/releases/latest",
   "release_notes": "Fixes BIN parser regression on patch 14.20 mods."
 }
 ```
@@ -447,5 +447,5 @@ changelog (`filter_unconventional = true`).
 ---
 
 <p align="center"><sub>
-  Back to <a href="README.md">README</a> · file an issue at <a href="https://github.com/LeagueToolkit/Hematite/issues">Hematite/issues</a>
+  Back to <a href="README.md">README</a> · file an issue at <a href="https://github.com/RitoShark/Hematite/issues">Hematite/issues</a>
 </sub></p>
