@@ -1,37 +1,71 @@
 //! Hematite CLI — League of Legends custom skin fixer.
 //!
-//! ## Usage
-//! ```bash
-//! hematite-cli "path/to/skin.fantome"              # Auto-detect and fix all
-//! hematite-cli "skin.fantome" --all                 # Apply all fixes
-//! hematite-cli "skin.fantome" --healthbar --vfx-shape  # Specific fixes
-//! hematite-cli "skin.fantome" --dry-run             # Show what would be fixed
-//! hematite-cli "skin.fantome" --json                # JSON output
-//! hematite-cli "path/to/skins_folder/"              # Batch directory
-//! ```
+//! ## Entry modes
+//!
+//! The binary picks one of three flows based on the raw process args
+//! (see [`detect_entry_mode`]):
+//!
+//! - **Interactive** — no args (typically a double-click). Shows the
+//!   big banner and a numbered menu via [`interactive::run`].
+//! - **Drag-drop** — a single existing path, no flags. Applies every
+//!   fix and repaths under the `hematite` namespace. Same effective
+//!   Cli as "Fix a mod" in the interactive menu.
+//! - **Flag-driven** — anything else. Standard clap-parsed Cli used
+//!   by users and scripts that want explicit control.
+//!
+//! All three converge on [`run_with_cli`], the single source of truth
+//! for what a fix session does.
 
 mod args;
+mod banner;
 mod hash_downloader;
+mod interactive;
 mod logging;
 mod process;
 mod remote;
 mod version_check;
 
 use anyhow::Result;
+use args::{Cli, RepathLayoutArg};
 use clap::Parser;
 use hematite_types::champion::CharacterRelations;
 use hematite_types::repath::RepathOptions;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 fn main() {
-    let result = run();
+    let raw: Vec<String> = std::env::args().collect();
+    let mode = detect_entry_mode(&raw);
+
+    let result = match mode {
+        EntryMode::Interactive => {
+            // Menu loop handles its own banner + pacing. Skip the
+            // "press enter" pause — the user is already in a prompt.
+            let r = interactive::run();
+            return early_exit(r, true);
+        }
+        EntryMode::DragDrop(path) => {
+            // Drag-drop = "do the thing" — apply every fix and repath
+            // under the `hematite` namespace. Same exact CLI a user
+            // would assemble manually, just preset.
+            banner::print();
+            let cli = interactive::build_fix_all_cli(path);
+            run_with_cli(cli)
+        }
+        EntryMode::Flagged => {
+            // Normal clap parse — let the user drive.
+            run_with_cli(Cli::parse())
+        }
+    };
 
     if let Err(ref e) = result {
         eprintln!("Error: {e:#}");
     }
 
-    // Pause before exit so console doesn't close instantly when double-clicked
-    if !std::env::args().any(|a| a == "--json" || a == "--no-pause") {
+    // Pause before exit so the console doesn't close instantly when
+    // double-clicked / drag-dropped. `--json` and `--no-pause` callers
+    // bypass.
+    if !raw.iter().any(|a| a == "--json" || a == "--no-pause") {
         eprintln!();
         eprintln!("Press Enter to exit...");
         let _ = std::io::Read::read(&mut std::io::stdin(), &mut [0u8]);
@@ -42,10 +76,67 @@ fn main() {
     }
 }
 
-fn run() -> Result<()> {
-    // Parse CLI arguments
-    let cli = args::Cli::parse();
+/// Same as falling through to the bottom of `main`, but used by entry
+/// modes that own their own pacing (the interactive loop ends with
+/// "bye!" — a "press enter" afterwards would be obnoxious).
+fn early_exit(result: Result<()>, skip_pause: bool) {
+    if let Err(ref e) = result {
+        eprintln!("Error: {e:#}");
+    }
+    if !skip_pause {
+        eprintln!();
+        eprintln!("Press Enter to exit...");
+        let _ = std::io::Read::read(&mut std::io::stdin(), &mut [0u8]);
+    }
+    if result.is_err() {
+        std::process::exit(1);
+    }
+}
 
+// ---------------------------------------------------------------------------
+// Entry mode detection
+// ---------------------------------------------------------------------------
+
+enum EntryMode {
+    Interactive,
+    DragDrop(PathBuf),
+    Flagged,
+}
+
+/// Pick an entry mode from the raw argv. Runs BEFORE clap so we can
+/// support "no args" cleanly (clap's `required_unless_present` would
+/// otherwise error out before we got a chance).
+fn detect_entry_mode(raw: &[String]) -> EntryMode {
+    // First element is the exe path.
+    let user_args: Vec<&str> = raw.iter().skip(1).map(|s| s.as_str()).collect();
+
+    // Pure double-click: nothing at all → interactive menu.
+    if user_args.is_empty() {
+        return EntryMode::Interactive;
+    }
+
+    // Single argument, no flags, points at something that exists →
+    // drag-drop. Heuristic intentionally tight: any flag at all
+    // (including `-`) routes through clap so users with explicit
+    // intent get the existing behaviour.
+    if user_args.len() == 1 {
+        let only = user_args[0];
+        if !only.starts_with('-') && Path::new(only).exists() {
+            return EntryMode::DragDrop(PathBuf::from(only));
+        }
+    }
+
+    EntryMode::Flagged
+}
+
+// ---------------------------------------------------------------------------
+// Shared processing entry point
+// ---------------------------------------------------------------------------
+
+/// Run a fix session against an already-built [`Cli`]. The flag-driven
+/// flow, the interactive menu, and the drag-drop fast path all
+/// converge here so behaviour stays consistent.
+pub fn run_with_cli(cli: Cli) -> Result<()> {
     // Initialize logging
     logging::init(&cli.verbosity, cli.json);
 
@@ -55,11 +146,7 @@ fn run() -> Result<()> {
     // readable banners; the hard-block still fires but silently.
     let version_outcome = version_check::check_version();
     if cli.check_version {
-        // Force a banner even in --json mode so the user gets feedback,
-        // then exit cleanly regardless of gate status.
         let blocked = version_check::report(&version_outcome, true);
-        // `report` only prints when there's something to say; explicit
-        // "you're good" line so `--check-version` always gives feedback.
         if !blocked
             && matches!(
                 version_outcome.status,
@@ -95,34 +182,29 @@ fn run() -> Result<()> {
     }
 
     // After `--check-version` short-circuit, `input` is guaranteed present
-    // by clap's `required_unless_present`. Resolve it once for the rest of run().
+    // by clap's `required_unless_present` (or by the entry-mode dispatcher
+    // for the interactive / drag-drop paths).
     let input = cli
         .input
         .as_ref()
-        .expect("clap should have required `input` unless --check-version was passed");
+        .expect("input must be present at this point — entry modes guarantee it");
 
-    // Validate input exists
     if !input.exists() {
         anyhow::bail!("Input path does not exist: {}", input.display());
     }
 
-    // Start timer
     let start_time = Instant::now();
 
-    // Collect selected fixes
     let selected_fixes = args::collect_selected_fixes(&cli);
 
-    // Load fix configuration and champion list (tries remote, falls back to embedded)
     let config = remote::load_fix_config();
     let champion_list = remote::load_champion_list();
     let champions = CharacterRelations::from_champion_list(&champion_list);
 
-    // Log session start (unless in JSON mode)
     if !cli.json {
         logging::log_session_start(&input.to_string_lossy(), &selected_fixes);
     }
 
-    // In check mode, force dry_run
     let dry_run = cli.dry_run || cli.check;
 
     // Build repath options.
@@ -132,16 +214,12 @@ fn run() -> Result<()> {
         let cfg = &config.repath;
         let active = cli.repath || cfg.enabled;
         if active {
-            // Pick a prefix: explicit CLI > config > Topaz-derived from filename.
-            // The derived form is .{shortChar}{skinNo}_ — we make a best-effort
-            // guess from the input filename: alphabetic prefix → champion,
-            // first run of digits → skin number.
+            // Prefix priority: explicit CLI > config (when non-placeholder)
+            // > Topaz-derived from filename.
             let prefix = cli
                 .repath_prefix
                 .clone()
                 .or_else(|| {
-                    // Only fall back to config.prefix if it's not the legacy
-                    // hard-coded default — those are clearly placeholders.
                     let p = &cfg.prefix;
                     if p.is_empty() || p == "bum" || p == "hematite" {
                         None
@@ -161,7 +239,6 @@ fn run() -> Result<()> {
         }
     };
 
-    // Process input
     let result = process::process_input(
         input,
         &config,
@@ -172,10 +249,8 @@ fn run() -> Result<()> {
         repath_opts.as_ref(),
     )?;
 
-    // Calculate duration
     let duration = start_time.elapsed().as_secs_f64();
 
-    // Output results
     if cli.check {
         if cli.json {
             output_check_json(&result)?;
@@ -188,13 +263,21 @@ fn run() -> Result<()> {
         logging::log_session_summary(&result, duration);
     }
 
-    // Exit with appropriate code
     if result.errors.is_empty() {
+        // Silence: the `RepathLayoutArg` field is consumed here implicitly
+        // through `cli.repath_layout` above; suppress a defensive warning
+        // some toolchains emit when a value-enum is only used to be
+        // converted away.
+        let _: RepathLayoutArg = cli.repath_layout;
         Ok(())
     } else {
         anyhow::bail!("Processing completed with {} error(s)", result.errors.len());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Helpers (unchanged)
+// ---------------------------------------------------------------------------
 
 /// Best-effort Topaz-style prefix from an input filename like
 /// "Sasuke by Noxli (V1.0).fantome" or "ahri_skin5.zip".
@@ -203,10 +286,7 @@ fn run() -> Result<()> {
 /// after it as the skin number.  Falls back to "bum" if neither is found —
 /// `RepathOptions::derive_prefix` already does the rest.
 fn derive_prefix_from_input(input: &std::path::Path) -> String {
-    let stem = input
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mod");
+    let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("mod");
     let mut champion = String::new();
     for c in stem.chars() {
         if c.is_ascii_alphabetic() {
@@ -225,7 +305,6 @@ fn derive_prefix_from_input(input: &std::path::Path) -> String {
     RepathOptions::derive_prefix(&champion, skin_no)
 }
 
-/// Output check-mode results as JSON.
 fn output_check_json(result: &hematite_types::result::ProcessResult) -> Result<()> {
     if let Some(check_info) = &result.check_info {
         let json = serde_json::to_string_pretty(check_info)?;
@@ -236,7 +315,6 @@ fn output_check_json(result: &hematite_types::result::ProcessResult) -> Result<(
     Ok(())
 }
 
-/// Output results as JSON for automation.
 fn output_json(result: &hematite_types::result::ProcessResult, duration: f64) -> Result<()> {
     #[derive(serde::Serialize)]
     struct JsonOutput {
