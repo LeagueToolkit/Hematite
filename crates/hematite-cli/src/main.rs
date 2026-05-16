@@ -23,6 +23,7 @@ mod interactive;
 mod logging;
 mod process;
 mod remote;
+mod ui;
 mod version_check;
 
 use anyhow::Result;
@@ -256,6 +257,12 @@ pub fn run_with_cli(cli: Cli) -> Result<()> {
         }
     };
 
+    // Live progress UI — only renders in Normal verbosity (verbose /
+    // trace flows surface info through tracing, json / quiet flows
+    // need stderr clean for piping).
+    let ui_mode = ui::Mode::from_args(&cli.verbosity, cli.json);
+    let ui = ui::UiReporter::new(ui_mode);
+
     let result = process::process_input(
         input,
         &config,
@@ -264,6 +271,7 @@ pub fn run_with_cli(cli: Cli) -> Result<()> {
         dry_run,
         cli.check,
         repath_opts.as_ref(),
+        ui,
     )?;
 
     let duration = start_time.elapsed().as_secs_f64();

@@ -25,6 +25,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 colored = "2.0"
 
+# Live progress bar (shown in Normal verbosity; suppressed under -v verbose/trace)
+indicatif = "0.17"
+
 # File processing
 zip = "0.6"
 tempfile = "3.10"

@@ -11,27 +11,42 @@ pub fn init(verbosity: &Verbosity, json_mode: bool) {
     #[cfg(windows)]
     let _ = colored::control::set_virtual_terminal(true);
 
+    // Normal mode is now user-facing — the progress bar (see `ui.rs`)
+    // surfaces what the user actually wants to see, and tracing is held
+    // to warnings + errors so the per-step "Processing chunk X" stream
+    // doesn't drown out the bar. Verbose / Trace are unchanged for
+    // developers and bug reports.
     let level = match verbosity {
         Verbosity::Quiet => Level::ERROR,
-        Verbosity::Normal => Level::INFO,
+        Verbosity::Normal => Level::WARN,
         Verbosity::Verbose => Level::DEBUG,
         Verbosity::Trace => Level::TRACE,
     };
 
+    // Per-crate directives mirror the global level. The previous
+    // hard-coded `hematite_*=debug` directives short-circuited the
+    // user's chosen verbosity, leaving Normal mode just as noisy as
+    // Verbose — which is the bug the progress-bar work fixes.
+    let crate_level = match verbosity {
+        Verbosity::Quiet => "warn",
+        Verbosity::Normal => "warn",
+        Verbosity::Verbose => "debug",
+        Verbosity::Trace => "trace",
+    };
     let filter = EnvFilter::from_default_env()
         .add_directive(level.into())
         .add_directive(
-            "hematite_cli=debug"
+            format!("hematite_cli={crate_level}")
                 .parse()
                 .expect("BUG: hardcoded directive is invalid"),
         )
         .add_directive(
-            "hematite_core=debug"
+            format!("hematite_core={crate_level}")
                 .parse()
                 .expect("BUG: hardcoded directive is invalid"),
         )
         .add_directive(
-            "hematite_ltk=debug"
+            format!("hematite_ltk={crate_level}")
                 .parse()
                 .expect("BUG: hardcoded directive is invalid"),
         );

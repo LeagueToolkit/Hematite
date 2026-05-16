@@ -32,6 +32,10 @@ struct ProcessContext<'a> {
     dry_run: bool,
     check: bool,
     repath_opts: Option<&'a RepathOptions>,
+    /// Live progress reporter. Silent under `-v verbose|trace`, `--json`,
+    /// and `-v quiet` — for those flows the existing tracing output or
+    /// JSON pipe is the user-facing surface.
+    ui: crate::ui::UiReporter,
 }
 
 /// Load hash provider with LMDB fallback to TXT.
@@ -61,6 +65,12 @@ fn load_hash_provider() -> Result<Arc<dyn HashProvider>> {
 }
 
 /// Process input (file or directory).
+///
+/// The argument list is intentionally flat — these are all session-level
+/// settings already validated by clap and the caller. Bundling into a
+/// struct would just shuffle the same values one level deeper without
+/// genuinely improving call-site clarity, so the lint is suppressed.
+#[allow(clippy::too_many_arguments)]
 pub fn process_input(
     input: &Path,
     config: &FixConfig,
@@ -69,8 +79,12 @@ pub fn process_input(
     dry_run: bool,
     check: bool,
     repath_opts: Option<&RepathOptions>,
+    ui: crate::ui::UiReporter,
 ) -> Result<ProcessResult> {
-    // Load hash provider once for all files
+    // Load hash provider once for all files. The bar shows a stage
+    // label so the user sees something happen during the (slow) LMDB
+    // load on first run.
+    ui.stage("Loading hash dictionary…");
     let hash_provider = load_hash_provider()?;
 
     let ctx = ProcessContext {
@@ -80,6 +94,7 @@ pub fn process_input(
         dry_run,
         check,
         repath_opts,
+        ui,
     };
 
     let mut total_result = ProcessResult::default();
@@ -98,6 +113,7 @@ pub fn process_input(
         total_result = process_file_with_hashes(input, &ctx, &hash_provider)?;
     }
 
+    ctx.ui.finish();
     Ok(total_result)
 }
 
@@ -160,6 +176,13 @@ fn process_bin_file(
         ctx.dry_run,
         ctx.check,
     );
+    let ui = ctx.ui.clone();
+    ui.stage(&format!(
+        "Processing {}…",
+        file.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("BIN")
+    ));
     tracing::info!("Processing BIN: {}", file.display());
 
     // Initialize BIN provider
@@ -230,9 +253,12 @@ fn process_bin_file(
         std::fs::write(&output_path, &modified_bytes)
             .context("Failed to save modified BIN file")?;
 
-        tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
+        for fix in &result.applied_fixes {
+            ui.fix_applied(&fix.fix_name, Some(fix.changes_count));
+        }
+        ui.fix_applied(&format!("Wrote {}", output_path.display()), None);
 
-        // Log each applied fix
+        tracing::info!("✓ Wrote fixed BIN to: {}", output_path.display());
         for fix in &result.applied_fixes {
             tracing::info!(
                 "  ✓ {} ({} changes)",
@@ -240,7 +266,6 @@ fn process_bin_file(
                 fix.changes_count
             );
         }
-
         tracing::info!(
             "  Total: {} fixes, {} bytes written",
             result.fixes_applied,
@@ -323,12 +348,16 @@ fn process_wad_file(
             for seed in &seeds {
                 tracing::debug!("  seed → {} (skin{})", seed.champion, seed.skin_no);
             }
-            // Per-WAD subchampion warning: if the WAD ships seeds that
-            // don't match the primary champion derived from the WAD
-            // filename, surface that as info — config-driven downstream
-            // tools (e.g. profile generators) can pick this up too.
+            // Per-WAD subchampion note — surfaces via the live UI in
+            // Normal mode so the user immediately knows secondary forms
+            // are being handled, even though we hide everything else.
             if unique_champs.len() > 1 {
-                let names: Vec<&str> = unique_champs.iter().copied().collect();
+                let mut names: Vec<&str> = unique_champs.iter().copied().collect();
+                names.sort();
+                ctx.ui.note(&format!(
+                    "WAD contains subchampion forms: {}",
+                    names.join(", ")
+                ));
                 tracing::info!(
                     "WAD contains subchampion forms: {}",
                     names.join(", ")
@@ -342,6 +371,7 @@ fn process_wad_file(
 
     // === WAD-LEVEL PIPELINE ===
     // Run file-level fixes (BNK removal, format conversions, etc.)
+    ctx.ui.stage("Detecting WAD-level issues…");
     tracing::debug!("Running WAD-level pipeline...");
     let wad_output = wad_pipeline::apply_wad_fixes(&all_files, config, selected_fixes, hash_provider.as_ref())?;
 
@@ -350,6 +380,7 @@ fn process_wad_file(
 
     // Track WAD-level fixes applied
     for wad_fix in &wad_output.applied_fixes {
+        ctx.ui.fix_applied(&wad_fix.fix_name, Some(wad_fix.files_affected));
         tracing::info!(
             "WAD-level fix '{}' affected {} files",
             wad_fix.fix_name,
@@ -563,9 +594,17 @@ fn process_wad_file(
         .ok()
         .filter(|v| v.is_available());
 
+    // Snapshot the UI handle before the loop — the loop body shadows
+    // `ctx` for the per-BIN FixContext, so the outer ProcessContext
+    // ref would otherwise be inaccessible from inside.
+    let ui = ctx.ui.clone();
+    ui.stage("Applying fixes…");
+    ui.set_length(bin_chunks.len() as u64);
+
     // Process primary BIN files
     for (_, path, _) in &bin_chunks {
         let Some(tree) = parsed_bins.remove(path) else {
+            ui.tick();
             continue; // Already warned during parse
         };
 
@@ -583,8 +622,13 @@ fn process_wad_file(
 
         let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
 
-        // Log fixes applied to this specific BIN
+        // Surface each applied fix individually via the UI bar (clean
+        // green-tick line above the bar) plus a full developer log
+        // line under -v verbose.
         if result.fixes_applied > 0 {
+            for fix in &result.applied_fixes {
+                ui.fix_applied(&fix.fix_name, Some(fix.changes_count));
+            }
             tracing::info!("  {} - {} fixes applied:", path, result.fixes_applied);
             for fix in &result.applied_fixes {
                 tracing::info!(
@@ -594,6 +638,7 @@ fn process_wad_file(
                 );
             }
         }
+        ui.tick();
 
         let fixes_applied = result.fixes_applied;
         total_result.merge(result);
@@ -672,6 +717,7 @@ fn process_wad_file(
     // Must run AFTER all BIN fixes so fixes operate on original paths.
     if let Some(opts) = repath_opts {
         if !dry_run {
+            ui.stage(&format!("Repathing assets (prefix “{}”)…", opts.prefix));
             tracing::info!(
                 "Repathing assets with prefix \"{}\" (layout: {:?})...",
                 opts.prefix,
@@ -890,6 +936,7 @@ fn process_wad_file(
     // === WAD REBUILDING ===
     // Write modified WAD if any changes were made and not dry-run
     if !dry_run && (total_result.fixes_applied > 0 || !shared_files_to_remove.is_empty()) {
+        ui.stage("Rebuilding WAD…");
         tracing::info!("Building modified WAD...");
 
         let output_path = file.with_extension("fixed.wad.client");
@@ -900,6 +947,10 @@ fn process_wad_file(
             hematite_ltk::wad_builder::build_wad(&all_files, &shared_files_to_remove, &mut output_file)
                 .context("Failed to build output WAD")?;
 
+        ui.fix_applied(
+            &format!("Wrote {}", output_path.display()),
+            None,
+        );
         tracing::info!("✓ Wrote fixed WAD to: {}", output_path.display());
         tracing::info!(
             "  {} chunks included, {} files removed",
@@ -908,6 +959,7 @@ fn process_wad_file(
         );
         tracing::info!("  {} total fixes applied", total_result.fixes_applied);
     } else if !dry_run {
+        ui.note("No changes detected — WAD not modified.");
         tracing::info!("No changes detected - WAD not modified");
     }
 
