@@ -34,6 +34,9 @@ walkdir = "2"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 const_format = "0.2"
 
+# Semantic version comparison for the force-update gate
+semver = "1.0"
+
 # Hash database decompression
 zstd = "0.13"
 

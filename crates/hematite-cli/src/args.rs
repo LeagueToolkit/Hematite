@@ -28,8 +28,9 @@ use std::path::PathBuf;
 #[command(about = "League of Legends custom skin fixer")]
 #[command(version)]
 pub struct Cli {
-    /// Input file or directory to process
-    pub input: PathBuf,
+    /// Input file or directory to process. Not required for `--check-version`.
+    #[arg(required_unless_present = "check_version")]
+    pub input: Option<PathBuf>,
 
     /// Output path (default: overwrite input)
     #[arg(short, long)]
@@ -95,10 +96,22 @@ pub struct Cli {
     #[arg(
         long,
         value_name = "PREFIX",
-        help = "Custom repath prefix (default: \"bum\"). E.g. \"--repath-prefix xyz\" turns \
-                assets/characters/… into assets/xyz/characters/…"
+        help = "Custom repath prefix. If omitted, derived Topaz-style from the input \
+                filename + skin number (e.g. .yone1_). With the default in-folder layout \
+                the prefix is concatenated to the next path segment, so \
+                \".yone1_\" turns assets/characters/yone/... into \
+                ASSETS/.yone1_characters/yone/..."
     )]
     pub repath_prefix: Option<String>,
+
+    #[arg(
+        long,
+        value_enum,
+        default_value = "in-folder",
+        help = "Repath layout. 'in-folder' = Topaz-style (concat to next segment, ROOT \
+                upper-cased). 'nested' = LtMAO-style (prefix as its own folder)."
+    )]
+    pub repath_layout: RepathLayoutArg,
 
     #[arg(
         long,
@@ -129,6 +142,21 @@ pub struct Cli {
 
     #[arg(short = 'v', long, default_value = "normal", help = "Verbosity level")]
     pub verbosity: Verbosity,
+
+    // -- Version-gate controls (see version_check.rs) -------------------
+    #[arg(
+        long,
+        help = "Bypass the remote version-gate check. The advisory banner is still printed, \
+                but a hard-block 'CLI too old' verdict no longer prevents execution. Use \
+                this for CI runs or when you know the new minimum is wrong."
+    )]
+    pub skip_version_check: bool,
+
+    #[arg(
+        long,
+        help = "Print version check status and exit without processing any input."
+    )]
+    pub check_version: bool,
 }
 
 #[derive(Debug, Clone, clap::ValueEnum)]
@@ -137,6 +165,23 @@ pub enum Verbosity {
     Normal,
     Verbose,
     Trace,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum RepathLayoutArg {
+    /// Topaz-style: ROOT/{prefix}{seg1}/seg2/... (default)
+    InFolder,
+    /// LtMAO-style: root/{prefix}/seg1/seg2/...
+    Nested,
+}
+
+impl From<RepathLayoutArg> for hematite_types::repath::RepathLayout {
+    fn from(v: RepathLayoutArg) -> Self {
+        match v {
+            RepathLayoutArg::InFolder => Self::InFolder,
+            RepathLayoutArg::Nested => Self::Nested,
+        }
+    }
 }
 
 /// All known fix IDs in application order.

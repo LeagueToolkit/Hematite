@@ -198,6 +198,7 @@ fn process_bin_file(
         file_path: file.to_string_lossy().to_string(),
         linked_trees: std::collections::HashMap::new(),
         shader_validator: shader_validator.as_ref(),
+        additional_bins: Vec::new(),
     };
 
     // Run fixes
@@ -283,17 +284,58 @@ fn process_wad_file(
         .extract_all_files(hash_provider.as_ref())
         .context("Failed to extract files from WAD")?;
 
+    // Identify BIN entries by content magic, not just by path extension —
+    // mods commonly ship BINs whose path-hash isn't in the dictionary, in
+    // which case the resolved "path" is a hex string and the `.bin` filter
+    // would skip them.  Magic detection catches both.
     let bin_chunks: Vec<_> = all_files
         .iter()
-        .filter(|(_hash, path, _bytes)| path.to_lowercase().ends_with(".bin"))
+        .filter(|(_h, path, bytes)| {
+            path.to_lowercase().ends_with(".bin") || repath_core::looks_like_bin(bytes)
+        })
         .cloned()
         .collect();
 
     tracing::info!(
-        "WAD has {} total entries, {} BIN files",
+        "WAD has {} total entries, {} BIN file(s)",
         wad_provider.hash_count(),
         bin_chunks.len()
     );
+
+    // Discover champion/skin seeds from the resolved TOC. Surfaces
+    // subcharacters that ship alongside the primary champion (e.g.
+    // jinxmine alongside jinx) so the user can see they're being
+    // processed and downstream pipeline steps can iterate over them.
+    {
+        let seeds = hematite_core::seeds::discover_seeds(
+            all_files.iter().map(|(_, p, _)| p.as_str()),
+        );
+        if seeds.is_empty() {
+            tracing::debug!("Seed discovery: no skin BINs found in TOC (binless mod?)");
+        } else {
+            let unique_champs: std::collections::HashSet<&str> =
+                seeds.iter().map(|s| s.champion.as_str()).collect();
+            tracing::info!(
+                "Seed discovery: {} skin(s) across {} champion(s)",
+                seeds.len(),
+                unique_champs.len()
+            );
+            for seed in &seeds {
+                tracing::debug!("  seed → {} (skin{})", seed.champion, seed.skin_no);
+            }
+            // Per-WAD subchampion warning: if the WAD ships seeds that
+            // don't match the primary champion derived from the WAD
+            // filename, surface that as info — config-driven downstream
+            // tools (e.g. profile generators) can pick this up too.
+            if unique_champs.len() > 1 {
+                let names: Vec<&str> = unique_champs.iter().copied().collect();
+                tracing::info!(
+                    "WAD contains subchampion forms: {}",
+                    names.join(", ")
+                );
+            }
+        }
+    }
 
     let mut total_result = ProcessResult::default();
     let mut shared_files_to_remove = Vec::new();
@@ -321,6 +363,10 @@ fn process_wad_file(
     // Register LTK-based converters (override placeholders)
     converter_registry.register("dds_to_tex", texture_converter::dds_to_tex);
     converter_registry.register("sco_to_scb", mesh_converter::sco_to_scb);
+    // In-place byte transforms — same registry, but addressed via
+    // `WadTransformAction::TransformBytes` rules.
+    converter_registry.register("strip_mipmaps", hematite_ltk::strip_mipmaps::strip_mipmaps_auto);
+    converter_registry.register("fix_tex_dims", hematite_ltk::fix_dimensions::fix_dimensions_auto);
 
     let mut conversion_count = 0u32;
     if !wad_output.files_to_convert.is_empty() {
@@ -359,6 +405,98 @@ fn process_wad_file(
         }
 
         total_result.fixes_applied += conversion_count;
+    }
+
+    // Perform in-place byte transforms (mipmap strip, dimension fix, ...).
+    // Same converter registry as `files_to_convert`; the only difference is
+    // we don't touch paths/extensions.
+    let mut transform_count = 0u32;
+    if !wad_output.files_to_transform.is_empty() {
+        tracing::info!(
+            "Applying {} in-place byte transforms...",
+            wad_output.files_to_transform.len()
+        );
+        for op in &wad_output.files_to_transform {
+            if let Some((_, _, bytes)) = all_files.iter_mut().find(|(_, p, _)| p == &op.path) {
+                match converter_registry.convert(&op.converter, bytes) {
+                    Ok(new_bytes) => {
+                        if new_bytes != *bytes {
+                            tracing::info!(
+                                "✓ Transformed {} via {} ({} → {} bytes)",
+                                op.path,
+                                op.converter,
+                                bytes.len(),
+                                new_bytes.len()
+                            );
+                            *bytes = new_bytes;
+                            transform_count += 1;
+                        } else {
+                            tracing::debug!(
+                                "{} via {}: no change emitted (likely a no-op)",
+                                op.path,
+                                op.converter
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "✗ In-place transform '{}' failed for {}: {}",
+                            op.converter,
+                            op.path,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        total_result.fixes_applied += transform_count;
+    }
+
+    // Append injected files (fallback textures, placeholder assets, ...).
+    // Bytes are resolved through `hematite_core::assets` — the registry
+    // keeps the blob list out of config and out of the pipeline.
+    let mut added_count = 0u32;
+    if !wad_output.files_to_add.is_empty() {
+        tracing::info!(
+            "Injecting {} fallback asset(s)...",
+            wad_output.files_to_add.len()
+        );
+        // Build a fresh paths-in-WAD set so `only_if_missing` honours
+        // anything we've already added during this loop.
+        let mut paths_in_wad: std::collections::HashSet<String> = all_files
+            .iter()
+            .map(|(_, p, _)| p.to_lowercase())
+            .collect();
+        for addition in &wad_output.files_to_add {
+            let lower = addition.path.to_lowercase();
+            if addition.only_if_missing && paths_in_wad.contains(&lower) {
+                tracing::debug!(
+                    "Skipping injection of {} ({} already present)",
+                    addition.asset,
+                    addition.path
+                );
+                continue;
+            }
+            let Some(bytes) = hematite_core::assets::get(&addition.asset) else {
+                tracing::warn!(
+                    "Asset '{}' not registered; skipping injection at {}",
+                    addition.asset,
+                    addition.path
+                );
+                continue;
+            };
+            let hash = wad_path_hash(&addition.path);
+            all_files.push((hash, addition.path.clone(), bytes.to_vec()));
+            paths_in_wad.insert(lower);
+            added_count += 1;
+            tracing::info!(
+                "✓ Injected asset '{}' at {} ({} bytes)",
+                addition.asset,
+                addition.path,
+                bytes.len()
+            );
+        }
+        total_result.fixes_applied += added_count;
     }
 
     // === LINKED BIN RESOLUTION (BFS) ===
@@ -440,6 +578,7 @@ fn process_wad_file(
             file_path: path.clone(),
             linked_trees: linked_only.clone(),
             shader_validator: shader_validator.as_ref(),
+            additional_bins: Vec::new(),
         };
 
         let result = apply_fixes(&mut ctx, config, selected_fixes, dry_run);
@@ -483,6 +622,47 @@ fn process_wad_file(
 
         // Collect files marked for removal from this BIN context
         shared_files_to_remove.extend(ctx.files_to_remove);
+
+        // Materialise BINs produced by SplitEntriesByType (and any other
+        // transform that emits sibling BINs). These need to land in the
+        // rebuilt WAD as standalone chunks.
+        if !dry_run && !ctx.additional_bins.is_empty() {
+            for (new_path, new_tree) in &ctx.additional_bins {
+                match bin_provider.write_bytes(new_tree) {
+                    Ok(bytes) => {
+                        let hash = wad_path_hash(new_path);
+                        // If a chunk already exists at this hash (re-running
+                        // an already-split BIN, or template collision),
+                        // overwrite the bytes so the latest split wins.
+                        if let Some((_, _, existing)) =
+                            all_files.iter_mut().find(|(h, _, _)| *h == hash)
+                        {
+                            *existing = bytes;
+                            tracing::debug!(
+                                source = %path,
+                                new_bin = %new_path,
+                                "Replaced existing chunk for split-BIN output"
+                            );
+                        } else {
+                            tracing::info!(
+                                source = %path,
+                                new_bin = %new_path,
+                                "Adding split-BIN output to WAD ({} bytes)",
+                                bytes.len()
+                            );
+                            all_files.push((hash, new_path.clone(), bytes));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to serialize split-BIN output {}: {}",
+                            new_path,
+                            e
+                        );
+                    }
+                }
+            }
+        }
     }
 
     // Update total files removed count
@@ -492,63 +672,132 @@ fn process_wad_file(
     // Must run AFTER all BIN fixes so fixes operate on original paths.
     if let Some(opts) = repath_opts {
         if !dry_run {
-            let prefix = &opts.prefix;
-            tracing::info!("Repathing assets with prefix \"{}\"...", prefix);
+            tracing::info!(
+                "Repathing assets with prefix \"{}\" (layout: {:?})...",
+                opts.prefix,
+                opts.layout
+            );
 
-            // 0. If --game-wad is provided, extract missing referenced files from
-            //    the base-game WAD so the mod becomes fully self-contained.
+            // 0. If --game-wad is provided, extract missing referenced files
+            //    from the base-game WAD so the mod becomes fully self-contained.
             let mut game_files_added = 0u32;
             if let Some(ref game_wad_path) = opts.game_wad {
-                game_files_added =
-                    extract_missing_from_game_wad(game_wad_path, &mut all_files, &bin_provider, hash_provider.as_ref(), opts)?;
+                game_files_added = extract_missing_from_game_wad(
+                    game_wad_path,
+                    &mut all_files,
+                    &bin_provider,
+                    hash_provider.as_ref(),
+                    opts,
+                )?;
             }
 
-            // 1. Build set of all WAD file paths (mod + any game files we just added).
-            //    Only repath strings that point to files in this set.
-            let wad_paths: std::collections::HashSet<String> = all_files
-                .iter()
-                .map(|(_, p, _)| p.to_lowercase())
-                .collect();
+            // 1. Build a path+hash index of every WAD entry so BIN strings
+            //    can match against custom-hashed entries (no resolved path).
+            let index = repath_core::WadIndex::from_entries(
+                all_files.iter().map(|(h, p, _)| (*h, p.clone())),
+            );
 
-            let mut all_new_paths: Vec<String> = Vec::new();
+            // 2. Walk every BIN in the WAD (identified by extension OR magic)
+            //    and rewrite asset references that point to files we ship.
+            //    The mapping returned tells us how to rename the WAD entries.
+            let mut combined_mapping: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
             let mut repath_bin_count = 0u32;
+            let mut bins_touched = 0u32;
 
-            for (_, path, bytes) in all_files.iter_mut() {
-                if !path.to_lowercase().ends_with(".bin") {
+            for (_h, path, bytes) in all_files.iter_mut() {
+                let is_bin = path.to_lowercase().ends_with(".bin")
+                    || repath_core::looks_like_bin(bytes);
+                if !is_bin {
                     continue;
                 }
-                match bin_provider.parse_bytes(bytes) {
-                    Ok(mut tree) => {
-                        let result = repath_core::repath_bin_strings(&mut tree, prefix, opts.skip_vo, &wad_paths);
-                        if result.strings_repathed > 0 {
-                            match bin_provider.write_bytes(&tree) {
-                                Ok(new_bytes) => {
-                                    repath_bin_count += result.strings_repathed;
-                                    all_new_paths.extend(result.new_paths);
-                                    *bytes = new_bytes;
-                                    tracing::debug!(
-                                        "Repathed {} strings in {}",
-                                        result.strings_repathed,
-                                        path
-                                    );
-                                }
-                                Err(e) => tracing::warn!("Failed to write repathed BIN {}: {}", path, e),
-                            }
-                        }
+                let mut tree = match bin_provider.parse_bytes(bytes) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tracing::warn!("Skipping BIN at {}: parse failed: {}", path, e);
+                        continue;
                     }
-                    Err(e) => tracing::warn!("Failed to parse BIN for repathing {}: {}", path, e),
+                };
+                let r = repath_core::repath_bin_strings(&mut tree, opts, &index, wad_path_hash);
+                if r.strings_repathed == 0 {
+                    continue;
+                }
+                match bin_provider.write_bytes(&tree) {
+                    Ok(new_bytes) => {
+                        repath_bin_count += r.strings_repathed;
+                        bins_touched += 1;
+                        for (k, v) in r.mapping {
+                            combined_mapping.entry(k).or_insert(v);
+                        }
+                        *bytes = new_bytes;
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to write repathed BIN {}: {}", path, e)
+                    }
                 }
             }
 
-            // 2. Rename non-BIN WAD files to their repathed paths.
+            // 3. Rename WAD entries.  Match priority:
+            //    a) WAD entry's resolved path is the key in `combined_mapping`
+            //       (BIN reference said "assets/foo" and the mod ships an
+            //        entry whose dictionary path is "assets/foo"),
+            //    b) WAD entry's PATH-HASH equals `xxhash64(orig)` of some BIN
+            //       reference — this catches custom-hashed mods where the
+            //       entry has no dictionary path,
+            //    c) WAD entry's path itself is a recognisable asset path with
+            //       no mapping → fall back to `repath_wad_path`.
+            //
+            //    Build the hash→new_path index once.
+            let hash_mapping: std::collections::HashMap<u64, String> = combined_mapping
+                .iter()
+                .map(|(orig, new)| (wad_path_hash(orig), new.clone()))
+                .collect();
+
             let mut repath_wad_count = 0u32;
+            let mut new_path_set: Vec<String> = Vec::new();
+            let mut seen_dest: std::collections::HashMap<String, u32> =
+                std::collections::HashMap::new();
+
             let repathed: Vec<(u64, String, Vec<u8>)> = all_files
                 .drain(..)
                 .map(|(hash, path, bytes)| {
-                    if let Some(new_path) = repath_core::repath_wad_path(&path, prefix) {
-                        let new_hash = wad_path_hash(&new_path);
+                    let lower = path.to_lowercase();
+
+                    // Pick the new path in priority order: BIN mapping (by
+                    // path or by hash) → wad path transform → no change.
+                    let new_path_opt: Option<String> = combined_mapping
+                        .get(&lower)
+                        .cloned()
+                        .or_else(|| hash_mapping.get(&hash).cloned())
+                        .or_else(|| {
+                            repath_core::repath_wad_path(&path, &opts.prefix, opts.layout)
+                        });
+
+                    let final_path = match new_path_opt {
+                        Some(np) => {
+                            // Topaz-style collision dedup: if we'd produce a
+                            // duplicate destination, append _1, _2, ...
+                            let np_lower = np.to_lowercase();
+                            let suffix = seen_dest
+                                .entry(np_lower.clone())
+                                .and_modify(|c| *c += 1)
+                                .or_insert(0);
+                            if *suffix == 0 {
+                                np
+                            } else if let Some(dot) = np.rfind('.') {
+                                format!("{}_{}{}", &np[..dot], suffix, &np[dot..])
+                            } else {
+                                format!("{}_{}", np, suffix)
+                            }
+                        }
+                        None => path.clone(),
+                    };
+
+                    if final_path != path {
                         repath_wad_count += 1;
-                        (new_hash, new_path, bytes)
+                        new_path_set.push(final_path.to_lowercase());
+                        let new_hash = wad_path_hash(&final_path);
+                        (new_hash, final_path, bytes)
                     } else {
                         (hash, path, bytes)
                     }
@@ -557,26 +806,36 @@ fn process_wad_file(
             all_files = repathed;
 
             tracing::info!(
-                "  Repathed {} BIN string(s), {} WAD file(s) ({} pulled from game WAD)",
+                "  {} string(s) in {} BIN(s) repathed; {} WAD entry/entries renamed; \
+                 {} pulled from game WAD",
                 repath_bin_count,
+                bins_touched,
                 repath_wad_count,
                 game_files_added
             );
 
-            if repath_bin_count > 0 || repath_wad_count > 0 {
+            if repath_bin_count == 0 && repath_wad_count == 0 {
+                tracing::warn!(
+                    "  Nothing was repathed. This usually means the mod is binless or \
+                     ships pre-hashed paths the dictionary doesn't recognise. \
+                     Try --game-wad <path/to/champion.wad.client> to provide reference paths."
+                );
+            } else {
                 total_result.fixes_applied += 1;
             }
 
-            // 3. Inject invisible placeholder textures for missing references.
-            if opts.invis_texture && !all_new_paths.is_empty() {
-                let existing_paths: std::collections::HashSet<String> =
+            // 4. Inject invisible placeholders for repathed texture references
+            //    that have no real file backing them.
+            if opts.invis_texture && !new_path_set.is_empty() {
+                let existing: std::collections::HashSet<String> =
                     all_files.iter().map(|(_, p, _)| p.to_lowercase()).collect();
-
                 let placeholders =
-                    repath_core::missing_invis_placeholders(&existing_paths, &all_new_paths);
-
+                    repath_core::missing_invis_placeholders(&existing, &new_path_set);
                 if !placeholders.is_empty() {
-                    tracing::info!("  Injecting {} invis placeholder(s)...", placeholders.len());
+                    tracing::info!(
+                        "  Injecting {} invis placeholder(s)...",
+                        placeholders.len()
+                    );
                     for (path, bytes) in placeholders {
                         let hash = wad_path_hash(&path);
                         tracing::debug!("  + invis placeholder: {}", path);
@@ -586,9 +845,14 @@ fn process_wad_file(
             }
         } else {
             tracing::info!(
-                "[dry-run] Would repath assets with prefix \"{}\"{}",
+                "[dry-run] Would repath assets with prefix \"{}\" (layout: {:?}){}",
                 opts.prefix,
-                if opts.invis_texture { " + invis placeholders" } else { "" }
+                opts.layout,
+                if opts.invis_texture {
+                    " + invis placeholders"
+                } else {
+                    ""
+                }
             );
         }
     }
@@ -840,9 +1104,12 @@ fn extract_missing_from_game_wad(
     );
 
     // 1. Collect all asset paths referenced by BIN files in the mod.
+    //    Identify BINs by extension OR magic so unresolved entries are caught.
     let mut referenced: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (_, path, bytes) in all_files.iter() {
-        if !path.to_lowercase().ends_with(".bin") {
+        let is_bin =
+            path.to_lowercase().ends_with(".bin") || repath_core::looks_like_bin(bytes);
+        if !is_bin {
             continue;
         }
         if let Ok(tree) = bin_provider.parse_bytes(bytes) {
@@ -851,16 +1118,15 @@ fn extract_missing_from_game_wad(
         }
     }
 
-    // 2. Build set of paths the mod already has.
-    let mod_paths: std::collections::HashSet<String> = all_files
-        .iter()
-        .map(|(_, p, _)| p.to_lowercase())
-        .collect();
+    // 2. Build a path+hash index of what the mod already ships.
+    let mod_index = repath_core::WadIndex::from_entries(
+        all_files.iter().map(|(h, p, _)| (*h, p.clone())),
+    );
 
-    // 3. Determine which referenced paths are missing (check alternates too).
+    // 3. Determine which referenced paths are missing (alternates + hash).
     let missing: Vec<String> = referenced
         .into_iter()
-        .filter(|p| !repath_core::file_in_wad(p, &mod_paths))
+        .filter(|p| !mod_index.has(p, wad_path_hash))
         .collect();
 
     if missing.is_empty() {

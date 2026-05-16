@@ -15,6 +15,7 @@ mod hash_downloader;
 mod logging;
 mod process;
 mod remote;
+mod version_check;
 
 use anyhow::Result;
 use clap::Parser;
@@ -48,9 +49,61 @@ fn run() -> Result<()> {
     // Initialize logging
     logging::init(&cli.verbosity, cli.json);
 
+    // -- Version gate -------------------------------------------------------
+    // Runs before input validation so `--check-version` works without
+    // requiring an input path. JSON-mode callers shouldn't see human-
+    // readable banners; the hard-block still fires but silently.
+    let version_outcome = version_check::check_version();
+    if cli.check_version {
+        // Force a banner even in --json mode so the user gets feedback,
+        // then exit cleanly regardless of gate status.
+        let blocked = version_check::report(&version_outcome, true);
+        // `report` only prints when there's something to say; explicit
+        // "you're good" line so `--check-version` always gives feedback.
+        if !blocked
+            && matches!(
+                version_outcome.status,
+                version_check::VersionStatus::UpToDate
+                    | version_check::VersionStatus::Unknown
+            )
+        {
+            eprintln!(
+                "Hematite-CLI {} — up to date.",
+                env!("CARGO_PKG_VERSION")
+            );
+        }
+        if blocked {
+            std::process::exit(2);
+        }
+        return Ok(());
+    }
+    if !cli.json {
+        let blocked = version_check::report(&version_outcome, cli.skip_version_check);
+        if blocked {
+            anyhow::bail!(
+                "Refusing to run: CLI is older than the published minimum. \
+                 Pass --skip-version-check to override."
+            );
+        }
+    } else if matches!(version_outcome.status, version_check::VersionStatus::Outdated { .. })
+        && !cli.skip_version_check
+    {
+        anyhow::bail!(
+            "Refusing to run: CLI is older than the published minimum. \
+             Pass --skip-version-check to override (see --check-version)."
+        );
+    }
+
+    // After `--check-version` short-circuit, `input` is guaranteed present
+    // by clap's `required_unless_present`. Resolve it once for the rest of run().
+    let input = cli
+        .input
+        .as_ref()
+        .expect("clap should have required `input` unless --check-version was passed");
+
     // Validate input exists
-    if !cli.input.exists() {
-        anyhow::bail!("Input path does not exist: {}", cli.input.display());
+    if !input.exists() {
+        anyhow::bail!("Input path does not exist: {}", input.display());
     }
 
     // Start timer
@@ -66,7 +119,7 @@ fn run() -> Result<()> {
 
     // Log session start (unless in JSON mode)
     if !cli.json {
-        logging::log_session_start(&cli.input.to_string_lossy(), &selected_fixes);
+        logging::log_session_start(&input.to_string_lossy(), &selected_fixes);
     }
 
     // In check mode, force dry_run
@@ -79,9 +132,26 @@ fn run() -> Result<()> {
         let cfg = &config.repath;
         let active = cli.repath || cfg.enabled;
         if active {
-            let prefix = cli.repath_prefix.clone().unwrap_or_else(|| cfg.prefix.clone());
+            // Pick a prefix: explicit CLI > config > Topaz-derived from filename.
+            // The derived form is .{shortChar}{skinNo}_ — we make a best-effort
+            // guess from the input filename: alphabetic prefix → champion,
+            // first run of digits → skin number.
+            let prefix = cli
+                .repath_prefix
+                .clone()
+                .or_else(|| {
+                    // Only fall back to config.prefix if it's not the legacy
+                    // hard-coded default — those are clearly placeholders.
+                    let p = &cfg.prefix;
+                    if p.is_empty() || p == "bum" || p == "hematite" {
+                        None
+                    } else {
+                        Some(p.clone())
+                    }
+                })
+                .unwrap_or_else(|| derive_prefix_from_input(input));
             let mut opts = RepathOptions::new(prefix);
-            // CLI --invis-texture overrides config; config is the fallback
+            opts.layout = cli.repath_layout.into();
             opts.invis_texture = cli.invis_texture || cfg.invis_texture;
             opts.skip_vo = cfg.skip_vo;
             opts.game_wad = cli.game_wad.clone();
@@ -93,7 +163,7 @@ fn run() -> Result<()> {
 
     // Process input
     let result = process::process_input(
-        &cli.input,
+        input,
         &config,
         &selected_fixes,
         &champions,
@@ -124,6 +194,35 @@ fn run() -> Result<()> {
     } else {
         anyhow::bail!("Processing completed with {} error(s)", result.errors.len());
     }
+}
+
+/// Best-effort Topaz-style prefix from an input filename like
+/// "Sasuke by Noxli (V1.0).fantome" or "ahri_skin5.zip".
+///
+/// Picks the first alphabetic run as the "champion" and the first digit run
+/// after it as the skin number.  Falls back to "bum" if neither is found —
+/// `RepathOptions::derive_prefix` already does the rest.
+fn derive_prefix_from_input(input: &std::path::Path) -> String {
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("mod");
+    let mut champion = String::new();
+    for c in stem.chars() {
+        if c.is_ascii_alphabetic() {
+            champion.push(c);
+        } else if !champion.is_empty() {
+            break;
+        }
+    }
+    let after_champ: String = stem
+        .chars()
+        .skip(champion.len())
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let skin_no: u32 = after_champ.parse().unwrap_or(0);
+    RepathOptions::derive_prefix(&champion, skin_no)
 }
 
 /// Output check-mode results as JSON.
