@@ -43,3 +43,7 @@ semver = "1.0"
 # Hash database decompression
 zstd = "0.13"
 
+
+[build-dependencies]
+winres = "0.1"
+
